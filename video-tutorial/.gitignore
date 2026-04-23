@@ -1,0 +1,4 @@
+
+# Piper TTS model files (downloaded at runtime)
+*.onnx
+*.onnx.json

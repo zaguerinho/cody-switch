@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>agent-hub</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <nav>
+    <a href="#" onclick="navigate('home')" class="nav-brand">agent-hub</a>
+    <div class="nav-links">
+      <a href="#" onclick="navigate('home')">Rooms</a>
+      <a href="#" onclick="navigate('activity')">Activity</a>
+    </div>
+    <div class="nav-status" id="server-status"></div>
+  </nav>
+
+  <main id="app">
+    <div class="loading">Loading...</div>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

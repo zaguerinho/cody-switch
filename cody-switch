@@ -1,0 +1,3877 @@
+#!/bin/bash
+#
+# cody-switch - Switch between AGENTS.md feature contexts
+#
+# Usage:
+#   cody-switch install             - Install symlink, global config, commands, and skills
+#   cody-switch install --force     - Overwrite existing config, commands, and skills
+#   cody-switch uninstall           - Remove symlink, commands, and skills (keep config)
+#   cody-switch update              - Pull latest changes from remote
+#
+#   cody-switch list                - List all available features
+#   cody-switch list --all          - Include archived features
+#   cody-switch <number|name>       - Switch to feature by number or name
+#   cody-switch <name> --with <ref>  - Switch with reference context(s)
+#   cody-switch current             - Show current active feature
+#   cody-switch new <name>          - Save current AGENTS.md as named context
+#   cody-switch blank <name>        - Create a blank feature context
+#   cody-switch blank <name> --branch   - Also create and checkout a git branch
+#   cody-switch blank <name> --workflow - Also append workflow.md template
+#   cody-switch fork <source> <new-name>  - Fork from an existing feature
+#     Options: --without-docs  --without-tasks  --branch
+#   cody-switch peek <name|number>  - View a feature's AGENTS.md without switching
+#   cody-switch archive <name>      - Archive a feature
+#   cody-switch unarchive <name>    - Restore an archived feature
+#   cody-switch delete <name>       - Delete a feature and all its artifacts
+#   cody-switch pin-session          - Pin current session as checkpoint
+#   cody-switch promote-lesson            - Promote lessons (interactive destination)
+#   cody-switch promote-lesson --project  - Promote to project global file
+#   cody-switch promote-lesson --user     - Promote to user-level file
+#   cody-switch promote-audit        - List unpromoted lessons across all features
+#   cody-switch merge <source> [into <target>] [--delete]  - Merge source into target (default: active)
+#   cody-switch doctor               - Diagnose feature health (missing/empty AGENTS.md, orphaned data)
+#   cody-switch doctor --fix         - Auto-fix by creating scaffold AGENTS.md for broken features
+#
+
+set -e
+
+VERSION="0.1.0"
+
+# Resolve the real script location (follows symlinks)
+REAL_SCRIPT="$(readlink -f "$0" 2>/dev/null || python3 -c "import os; print(os.path.realpath('$0'))")"
+SCRIPT_DIR="$(cd "$(dirname "$REAL_SCRIPT")" && pwd)"
+
+# Colors (defined early so global commands can use them)
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
+BOLD='\033[1m'
+DIM='\033[2m'
+
+SYMLINK_PATH="/usr/local/bin/cody-switch"
+GLOBAL_AGENTS_MD="$HOME/AGENTS.md"
+GLOBAL_TEMPLATE="$SCRIPT_DIR/global-agents.md"
+PROMPT_TEMPLATES_DIR="$SCRIPT_DIR/global-commands"
+GLOBAL_SKILLS_DIR="$SCRIPT_DIR/global-skills"
+GLOBAL_SKILLS_EXTRA_DIR="$SCRIPT_DIR/global-skills-extra"
+CODEX_SKILLS_DIR="$HOME/.codex/skills"
+CODEX_BIN_DIR="$HOME/.codex/bin"
+CODEX_LESSONS_FILE="$HOME/.codex/lessons-global.md"
+
+# Show help text
+show_help() {
+    echo "cody-switch v${VERSION} - Switch between AGENTS.md feature contexts"
+    echo ""
+    echo "Setup:"
+    echo "  cody-switch install              - Install symlink, seed ~/AGENTS.md, completions, and skills"
+    echo "  cody-switch install --force      - Overwrite ~/AGENTS.md template and installed skills"
+    echo "  cody-switch install --extras     - Also install optional extra skills"
+    echo "  cody-switch install --skill <n>  - Install a specific extra skill by name"
+    echo "  cody-switch uninstall            - Remove symlink, completions, and matching skills"
+    echo "  cody-switch update               - Pull latest changes from remote"
+    echo "  cody-switch init                 - Initialize project for AI-assisted development"
+    echo "  cody-switch init --template <t>  - Use specific template (node, python, go, etc.)"
+    echo "  cody-switch init --force         - Reinitialize (backs up existing AGENTS.md)"
+    echo "  cody-switch prompt <name|list>   - Print bundled prompt templates"
+    echo ""
+    echo "Usage:"
+    echo "  cody-switch list                 - List all available features"
+    echo "  cody-switch list --all           - Include archived features"
+    echo "  cody-switch <number|name>        - Switch to feature by number or name"
+    echo "  cody-switch <name> --with <ref>  - Switch with reference context(s)"
+    echo "  cody-switch current              - Show current active feature"
+    echo "  cody-switch new <name>           - Save current AGENTS.md as named context"
+    echo "  cody-switch blank <name>         - Create a blank feature context"
+    echo "  cody-switch blank <name> --branch   - Also create and checkout a git branch"
+    echo "  cody-switch blank <name> --worktree - Create with dedicated git worktree"
+    echo "  cody-switch blank <name> --workflow - Also append workflow.md template"
+    echo "  cody-switch fork <source> <new-name>  - Fork from an existing feature"
+    echo "    Options: --without-docs  --without-tasks  --branch  --worktree"
+    echo "  cody-switch peek <name|number>   - View a feature's AGENTS.md"
+    echo "  cody-switch archive <name>       - Archive a feature"
+    echo "  cody-switch unarchive <name>     - Restore an archived feature"
+    echo "  cody-switch delete <name>        - Delete a feature and all artifacts"
+    echo "  cody-switch pin-session           - Pin current session as checkpoint"
+    echo "  cody-switch promote-lesson            - Promote lessons (interactive destination)"
+    echo "  cody-switch promote-lesson --project  - Promote to project global file"
+    echo "  cody-switch promote-lesson --user     - Promote to user-level file"
+    echo "  cody-switch promote-audit         - List unpromoted lessons across all features"
+    echo "  cody-switch merge <source>        - Merge source into active feature (archives source)"
+    echo "  cody-switch merge <source> into <target>  - Merge source into specified target"
+    echo "  cody-switch merge <source> --delete - Delete source after merge instead of archiving"
+    echo "  cody-switch doctor                - Diagnose feature health (missing/empty AGENTS.md)"
+    echo "  cody-switch doctor --fix          - Auto-fix empty/missing AGENTS.md with scaffold"
+    echo "  cody-switch save                  - Save active context to storage (run before commit)"
+    echo "  cody-switch sync [name]           - Sync worktree context back to storage"
+    echo "  cody-switch open <name>           - Print path to worktree directory"
+    echo ""
+    echo "Auto-managed per feature (stored in .codex/features/<name>/):"
+    echo "  AGENTS.md              - Feature-specific instructions (active copy at project root)"
+    echo "  docs/<name>/           - Feature documentation folder"
+    echo "  tasks/                 - todo.md + lessons.md (saved/restored on switch)"
+    echo "  session                - Codex session ID (for codex resume / codex fork)"
+}
+
+# Helper: install a single skill from source to ~/.codex/skills/{name}/
+# Args: name, source_file, force_flag, label_prefix
+_install_one_skill() {
+    local name="$1" source="$2" force="$3" label="${4:-Skill}"
+    local target="$CODEX_SKILLS_DIR/$name/SKILL.md"
+    if [ ! -f "$target" ]; then
+        mkdir -p "$CODEX_SKILLS_DIR/$name"
+        cp "$source" "$target"
+        echo -e "${GREEN}Installed ${label}: ${name}${NC}"
+    elif diff -q "$source" "$target" >/dev/null 2>&1; then
+        echo -e "${GREEN}${label} already installed: ${name}${NC}"
+    elif [ "$force" = "--force" ]; then
+        local backup="${target}.backup.$(date +%Y%m%d-%H%M%S)"
+        cp "$target" "$backup"
+        cp "$source" "$target"
+        echo -e "${YELLOW}Updated ${label}: ${name} (backed up)${NC}"
+    else
+        echo -e "${YELLOW}${label} ${name} differs, use --force to update${NC}"
+    fi
+}
+
+# Install a companion binary for a skill (downloaded from GitHub Releases).
+# Looks for a BINARY metadata file in the skill's source directory.
+_install_skill_binary() {
+    local skill_dir="$1" force="$2"
+    local binary_file="$skill_dir/BINARY"
+    [ -f "$binary_file" ] || return 0  # No binary needed for this skill
+
+    # Parse BINARY metadata
+    local bin_name repo tag_prefix
+    bin_name=$(grep '^name=' "$binary_file" | cut -d= -f2)
+    repo=$(grep '^repo=' "$binary_file" | cut -d= -f2)
+    tag_prefix=$(grep '^tag_prefix=' "$binary_file" | cut -d= -f2)
+
+    [ -n "$bin_name" ] || return 0
+
+    local target="$CODEX_BIN_DIR/$bin_name"
+
+    # Skip if already installed and not --force
+    if [ -x "$target" ] && [ "$force" != "--force" ]; then
+        local cur_ver
+        cur_ver=$("$target" --version 2>/dev/null | head -1)
+        echo -e "${GREEN}Binary already installed: ${bin_name} ${cur_ver:+(${cur_ver})}${NC}"
+        return 0
+    fi
+
+    # Detect platform
+    local os arch
+    os=$(uname -s | tr '[:upper:]' '[:lower:]')
+    arch=$(uname -m)
+    case "$arch" in
+        x86_64)         arch="amd64" ;;
+        aarch64|arm64)  arch="arm64" ;;
+    esac
+
+    # Get latest release tag matching prefix (uses gh for auth — works with private repos)
+    local tag
+    if command -v gh >/dev/null 2>&1; then
+        tag=$(gh release list --repo "$repo" --json tagName -q '.[].tagName' 2>/dev/null \
+            | grep "^${tag_prefix}" | head -1)
+    fi
+
+    if [ -z "$tag" ]; then
+        echo -e "${YELLOW}No release found for ${bin_name}, skipping binary download${NC}"
+        echo -e "${YELLOW}  Build from source: cd $SCRIPT_DIR/$bin_name && make build${NC}"
+        return 0
+    fi
+
+    local version="${tag#$tag_prefix}"
+    local archive="${bin_name}_${version}_${os}_${arch}.tar.gz"
+
+    echo -e "Downloading ${CYAN}${bin_name}${NC} v${version} (${os}/${arch})..."
+
+    # Download and extract to ~/.codex/bin/ (gh handles auth for private repos)
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    if gh release download "$tag" --repo "$repo" --pattern "$archive" --dir "$tmpdir" 2>/dev/null \
+        && [ -s "$tmpdir/$archive" ]; then
+        tar -xzf "$tmpdir/$archive" -C "$tmpdir" 2>/dev/null
+        mkdir -p "$CODEX_BIN_DIR"
+        mv "$tmpdir/$bin_name" "$target"
+        chmod +x "$target"
+        rm -rf "$tmpdir"
+
+        # Verify
+        if "$target" --version >/dev/null 2>&1; then
+            echo -e "${GREEN}Installed binary: ${bin_name} v${version}${NC}"
+        else
+            echo -e "${GREEN}Installed binary: ${bin_name} (version check skipped)${NC}"
+        fi
+
+        # Hint: add ~/.codex/bin to PATH if not already there
+        if ! echo "$PATH" | tr ':' '\n' | grep -q "$CODEX_BIN_DIR"; then
+            echo -e "${YELLOW}  Add to your PATH: export PATH=\"\$HOME/.codex/bin:\$PATH\"${NC}"
+            echo -e "${YELLOW}  Or add that line to your ~/.zshrc or ~/.bashrc${NC}"
+        fi
+    else
+        rm -rf "$tmpdir"
+        echo -e "${YELLOW}Download failed for ${bin_name} v${version} (${os}/${arch})${NC}"
+        echo -e "${YELLOW}  Build from source: cd $SCRIPT_DIR/$bin_name && make build${NC}"
+    fi
+}
+
+# Install cody-switch: create symlink, seed ~/AGENTS.md, and install skills.
+install_cody_switch() {
+    local force=""
+    local install_extras=""
+    local install_skill=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --force)    force="--force" ;;
+            --extras)   install_extras="1" ;;
+            --skill)    shift; install_skill="${1:-}" ;;
+            --skill=*)  install_skill="${1#--skill=}" ;;
+            *)          echo -e "${RED}Unknown install option: $1${NC}" >&2; return 1 ;;
+        esac
+        shift
+    done
+
+    echo -e "${BOLD}Installing cody-switch...${NC}"
+    echo ""
+
+    if [ -L "$SYMLINK_PATH" ]; then
+        local current_target
+        current_target="$(readlink "$SYMLINK_PATH" 2>/dev/null || true)"
+        if [ "$current_target" = "$REAL_SCRIPT" ]; then
+            echo -e "${GREEN}Symlink already installed at ${SYMLINK_PATH}${NC}"
+        elif [ "$force" = "--force" ]; then
+            echo -e "${YELLOW}Replacing existing symlink (was → ${current_target})${NC}"
+            sudo ln -sf "$REAL_SCRIPT" "$SYMLINK_PATH" || {
+                echo -e "${RED}Error: Failed to create symlink (sudo required for ${SYMLINK_PATH})${NC}" >&2
+                echo -e "You can create it manually: ${CYAN}sudo ln -sf \"$REAL_SCRIPT\" \"$SYMLINK_PATH\"${NC}" >&2
+                return 1
+            }
+            echo -e "${GREEN}Symlink updated: ${SYMLINK_PATH} → ${REAL_SCRIPT}${NC}"
+        else
+            echo -e "${RED}Error: ${SYMLINK_PATH} already exists but points to ${current_target}${NC}" >&2
+            echo -e "Use ${CYAN}cody-switch install --force${NC} to replace it" >&2
+            return 1
+        fi
+    elif [ -e "$SYMLINK_PATH" ]; then
+        echo -e "${RED}Error: ${SYMLINK_PATH} exists and is not a symlink${NC}" >&2
+        echo -e "Remove it manually, then re-run install" >&2
+        return 1
+    else
+        sudo ln -s "$REAL_SCRIPT" "$SYMLINK_PATH" || {
+            echo -e "${RED}Error: Failed to create symlink (sudo required for ${SYMLINK_PATH})${NC}" >&2
+            echo -e "You can create it manually: ${CYAN}sudo ln -sf \"$REAL_SCRIPT\" \"$SYMLINK_PATH\"${NC}" >&2
+            return 1
+        }
+        echo -e "${GREEN}Created symlink: ${SYMLINK_PATH} → ${REAL_SCRIPT}${NC}"
+    fi
+
+    local pending_template="$HOME/AGENTS.md.template-pending"
+    if [ -f "$GLOBAL_AGENTS_MD" ] && [ -s "$GLOBAL_AGENTS_MD" ]; then
+        if [ "$force" = "--force" ]; then
+            local backup="$HOME/AGENTS.md.backup.$(date +%Y%m%d-%H%M%S)"
+            cp "$GLOBAL_AGENTS_MD" "$backup"
+            echo -e "${BLUE}Backed up existing AGENTS.md to ${backup}${NC}"
+            cp "$GLOBAL_TEMPLATE" "$GLOBAL_AGENTS_MD"
+            echo -e "${GREEN}Seeded ~/AGENTS.md from template${NC}"
+        elif diff -q "$GLOBAL_TEMPLATE" "$GLOBAL_AGENTS_MD" >/dev/null 2>&1; then
+            echo -e "${GREEN}~/AGENTS.md is up to date${NC}"
+        else
+            cp "$GLOBAL_TEMPLATE" "$pending_template"
+            echo -e "${YELLOW}~/AGENTS.md already exists with custom content${NC}"
+            echo -e "Template saved to ${CYAN}~/AGENTS.md.template-pending${NC}"
+            echo -e "Review with: ${CYAN}diff -u ~/AGENTS.md ~/AGENTS.md.template-pending${NC}"
+        fi
+    else
+        cp "$GLOBAL_TEMPLATE" "$GLOBAL_AGENTS_MD"
+        echo -e "${GREEN}Created global AGENTS.md at ${GLOBAL_AGENTS_MD}${NC}"
+    fi
+
+    local comp_source="$SCRIPT_DIR/completions/cody-switch.sh"
+    if [ -f "$comp_source" ]; then
+        local zsh_comp_dir="$HOME/.zsh/completions"
+        mkdir -p "$zsh_comp_dir"
+        cp "$comp_source" "$zsh_comp_dir/_cody-switch"
+
+        if [ -f "$HOME/.zshrc" ] && ! grep -q 'fpath=.*\.zsh/completions' "$HOME/.zshrc" 2>/dev/null; then
+            python3 -c "
+import re
+
+with open('$HOME/.zshrc') as f:
+    content = f.read()
+
+fpath_line = 'fpath=(~/.zsh/completions \$fpath)'
+
+if re.search(r'source.*oh-my-zsh\.sh', content):
+    content = re.sub(r'(source.*oh-my-zsh\.sh)', fpath_line + r'\n\1', content, count=1)
+elif re.search(r'compinit', content):
+    content = re.sub(r'(.*compinit)', fpath_line + r'\n\1', content, count=1)
+else:
+    content += '\n' + fpath_line + '\nautoload -Uz compinit && compinit\n'
+
+with open('$HOME/.zshrc', 'w') as f:
+    f.write(content)
+" 2>/dev/null || true
+        fi
+
+        rm -f "$HOME"/.zcompdump*
+        echo -e "${GREEN}Installed tab completions to ${zsh_comp_dir}/_cody-switch${NC}"
+    fi
+
+    if [ -d "$GLOBAL_SKILLS_DIR" ]; then
+        local skill_dirs=("$GLOBAL_SKILLS_DIR"/*)
+        for skill_dir in "${skill_dirs[@]}"; do
+            [ -d "$skill_dir" ] || continue
+            local skill_file="$skill_dir/SKILL.md"
+            [ -f "$skill_file" ] || continue
+            _install_one_skill "$(basename "$skill_dir")" "$skill_file" "$force"
+            _install_skill_binary "$skill_dir" "$force"
+        done
+    fi
+
+    if [ -n "$install_skill" ]; then
+        local extra_dir="$GLOBAL_SKILLS_EXTRA_DIR/$install_skill"
+        local extra_file="$extra_dir/SKILL.md"
+        if [ ! -f "$extra_file" ]; then
+            echo -e "${RED}Error: Extra skill '${install_skill}' not found${NC}" >&2
+            if [ -d "$GLOBAL_SKILLS_EXTRA_DIR" ]; then
+                echo -e "Available extras:" >&2
+                for d in "$GLOBAL_SKILLS_EXTRA_DIR"/*/; do
+                    [ -d "$d" ] && [ -f "$d/SKILL.md" ] && echo "  $(basename "$d")" >&2
+                done
+            fi
+            return 1
+        fi
+        _install_one_skill "$install_skill" "$extra_file" "$force" "Extra skill"
+        _install_skill_binary "$extra_dir" "$force"
+    elif [ -n "$install_extras" ] && [ -d "$GLOBAL_SKILLS_EXTRA_DIR" ]; then
+        echo ""
+        echo -e "${BOLD}Installing extra skills...${NC}"
+        for skill_dir in "$GLOBAL_SKILLS_EXTRA_DIR"/*/; do
+            [ -d "$skill_dir" ] || continue
+            local skill_file="$skill_dir/SKILL.md"
+            [ -f "$skill_file" ] || continue
+            _install_one_skill "$(basename "$skill_dir")" "$skill_file" "$force" "Extra skill"
+            _install_skill_binary "$skill_dir" "$force"
+        done
+    fi
+
+    echo ""
+    echo -e "${YELLOW}Codex note:${NC} there is no Claude-style SessionStart hook or slash-command install path."
+    echo -e "Use ${CYAN}cody-switch current${NC} after a switch, and use ${CYAN}cody-switch prompt list${NC} for the bundled prompt templates."
+    echo ""
+    echo -e "${GREEN}Installation complete!${NC}"
+    echo -e "Verify: ${CYAN}cody-switch help${NC}"
+}
+
+uninstall_cody_switch() {
+    echo -e "${BOLD}Uninstalling cody-switch...${NC}"
+    echo ""
+
+    if [ -L "$SYMLINK_PATH" ]; then
+        sudo rm "$SYMLINK_PATH" || {
+            echo -e "${RED}Error: Failed to remove symlink (sudo required)${NC}" >&2
+            echo -e "You can remove it manually: ${CYAN}sudo rm \"$SYMLINK_PATH\"${NC}" >&2
+            return 1
+        }
+        echo -e "${GREEN}Removed symlink: ${SYMLINK_PATH}${NC}"
+    elif [ -e "$SYMLINK_PATH" ]; then
+        echo -e "${YELLOW}${SYMLINK_PATH} exists but is not a symlink — skipping${NC}"
+    else
+        echo -e "${YELLOW}No symlink found at ${SYMLINK_PATH}${NC}"
+    fi
+
+    if [ -f "$GLOBAL_AGENTS_MD" ]; then
+        echo -e "${BLUE}Kept global config at ${GLOBAL_AGENTS_MD}${NC}"
+    fi
+
+    local zsh_comp="$HOME/.zsh/completions/_cody-switch"
+    if [ -f "$zsh_comp" ]; then
+        rm "$zsh_comp"
+        echo -e "${GREEN}Removed tab completions: ${zsh_comp}${NC}"
+    fi
+
+    for _skills_source_dir in "$GLOBAL_SKILLS_DIR" "$GLOBAL_SKILLS_EXTRA_DIR"; do
+        [ -d "$_skills_source_dir" ] || continue
+        for skill_dir in "$_skills_source_dir"/*/; do
+            [ -d "$skill_dir" ] || continue
+            local skill_file="$skill_dir/SKILL.md"
+            [ -f "$skill_file" ] || continue
+            local skill_name
+            skill_name="$(basename "$skill_dir")"
+            local target="$CODEX_SKILLS_DIR/$skill_name/SKILL.md"
+            if [ ! -f "$target" ]; then
+                continue
+            elif diff -q "$skill_file" "$target" >/dev/null 2>&1; then
+                rm "$target"
+                rmdir "$CODEX_SKILLS_DIR/$skill_name" 2>/dev/null || true
+                echo -e "${GREEN}Removed skill: ${skill_name}${NC}"
+            else
+                echo -e "${YELLOW}Kept modified skill: ${skill_name}${NC}"
+            fi
+
+            local binary_meta="$skill_dir/BINARY"
+            if [ -f "$binary_meta" ]; then
+                local bin_name
+                bin_name=$(grep '^name=' "$binary_meta" | cut -d= -f2)
+                if [ -n "$bin_name" ] && [ -f "$CODEX_BIN_DIR/$bin_name" ]; then
+                    rm "$CODEX_BIN_DIR/$bin_name"
+                    echo -e "${GREEN}Removed binary: ${bin_name}${NC}"
+                fi
+            fi
+        done
+    done
+
+    echo ""
+    echo -e "${GREEN}Uninstall complete!${NC}"
+}
+
+update_cody_switch() {
+    echo -e "${BOLD}Updating cody-switch...${NC}"
+    echo ""
+
+    local old_version="$VERSION"
+    if ! git -C "$SCRIPT_DIR" pull --ff-only; then
+        echo -e "${RED}Error: Failed to pull updates. You may have local changes in ${SCRIPT_DIR}${NC}" >&2
+        echo -e "Resolve conflicts manually, then retry.${NC}" >&2
+        exit 1
+    fi
+
+    local new_version
+    new_version="$(grep -m1 '^VERSION=' "$REAL_SCRIPT" | cut -d'"' -f2)"
+
+    echo ""
+    if [ "$old_version" = "$new_version" ]; then
+        echo -e "${GREEN}Already up to date (v${old_version}).${NC}"
+    else
+        echo -e "${GREEN}Updated: v${old_version} → v${new_version}${NC}"
+    fi
+
+    echo -e "${CYAN}Tip: Run 'cody-switch install --force' to refresh ~/AGENTS.md and installed skills.${NC}"
+}
+
+show_prompt_template() {
+    local name="$1"
+    if [ -z "$name" ] || [ "$name" = "list" ]; then
+        echo "Available prompt templates:"
+        for prompt_file in "$PROMPT_TEMPLATES_DIR"/*.md; do
+            [ -f "$prompt_file" ] || continue
+            basename "$prompt_file" .md | sed 's/^/  /'
+        done
+        return 0
+    fi
+
+    local prompt_file="$PROMPT_TEMPLATES_DIR/$name.md"
+    if [ ! -f "$prompt_file" ]; then
+        echo -e "${RED}Error: Prompt template '${name}' not found${NC}" >&2
+        echo "Use 'cody-switch prompt list' to see available templates." >&2
+        return 1
+    fi
+
+    cat "$prompt_file"
+}
+
+case "${1:-}" in
+    install)    shift; install_cody_switch "$@"; exit 0 ;;
+    uninstall)  uninstall_cody_switch; exit 0 ;;
+    update)     update_cody_switch; exit 0 ;;
+    prompt)     shift; show_prompt_template "$@"; exit $? ;;
+    help|-h|--help) show_help; exit 0 ;;
+    --version|-V) echo "cody-switch v${VERSION}"; exit 0 ;;
+esac
+
+# Output format: "text" (default) or "json"
+OUTPUT_FORMAT="text"
+_global_args=()
+for _arg in "$@"; do
+    case "$_arg" in
+        --output=json|--json) OUTPUT_FORMAT="json" ;;
+        --output=text)        OUTPUT_FORMAT="text" ;;
+        *) _global_args+=("$_arg") ;;
+    esac
+done
+set -- "${_global_args[@]}"
+
+# JSON output helpers
+_is_json() { [ "$OUTPUT_FORMAT" = "json" ]; }
+
+_json_emit() {
+    python3 -c "
+import sys, json
+args = sys.argv[1:]
+obj = {}
+i = 0
+while i < len(args):
+    key = args[i]
+    val = args[i+1] if i+1 < len(args) else ''
+    if val.startswith('@bool:'):
+        obj[key] = val[6:] == 'true'
+    elif val.startswith('@int:'):
+        obj[key] = int(val[5:])
+    elif val.startswith('@array:'):
+        items = val[7:].split('\n') if val[7:] else []
+        obj[key] = [x for x in items if x]
+    elif val.startswith('@json:'):
+        obj[key] = json.loads(val[6:])
+    elif val == '@null':
+        obj[key] = None
+    else:
+        obj[key] = val
+    i += 2
+print(json.dumps(obj, indent=2))
+" "$@"
+}
+
+_json_error() {
+    _json_emit "success" "@bool:false" "error" "$1"
+    exit "${2:-1}"
+}
+
+# Detect project root: walk up from cwd to find the nearest git root
+# Handles both regular repos (.git is a directory) and git worktrees (.git is a file)
+find_project_root() {
+    local dir="$PWD"
+    while [ "$dir" != "/" ]; do
+        if [ -d "$dir/.git" ]; then
+            echo "$dir"
+            return 0
+        elif [ -f "$dir/.git" ]; then
+            # Inside a git worktree — .git is a file pointing to the main repo
+            # Resolve to the main repo root via the shared git directory
+            local git_common_dir
+            git_common_dir="$(cd "$dir" && git rev-parse --git-common-dir 2>/dev/null)"
+            if [ -n "$git_common_dir" ]; then
+                # git-common-dir returns the shared .git dir (e.g., /repo/.git)
+                # The main repo root is its parent
+                local main_root
+                main_root="$(cd "$dir" && cd "$git_common_dir/.." && pwd)"
+                echo "$main_root"
+                return 0
+            fi
+            # No fallback — if we're in a worktree but can't resolve the main repo, fail loudly
+            echo -e "${RED}Error: Inside a git worktree but could not resolve main repo root${NC}" >&2
+            return 1
+        fi
+        dir="$(dirname "$dir")"
+    done
+    return 1
+}
+
+PROJECT_DIR="$(find_project_root)" || {
+    echo -e "${RED}Error: Not inside a git repository. Run cody-switch from within a project.${NC}" >&2
+    exit 1
+}
+
+TRACKER_FILE="$PROJECT_DIR/.codex-current-feature"
+CLAUDE_MD="$PROJECT_DIR/AGENTS.md"
+WORKFLOW_TEMPLATE="$SCRIPT_DIR/workflow.md"
+DOCS_DIR="$PROJECT_DIR/docs"
+TASKS_DIR="$PROJECT_DIR/tasks"
+FEATURES_DIR="$PROJECT_DIR/.codex/features"
+WITH_REFS_FILE="$PROJECT_DIR/.codex-with-refs"
+WORKTREES_DIR="$PROJECT_DIR/.codex/worktrees"
+
+cd "$PROJECT_DIR"
+
+# Validate a feature name is safe for use in file paths and git refs
+# Rejects: empty, contains '/', contains '..', starts with '-'
+_validate_feature_name() {
+    local name="$1"
+    if [ -z "$name" ] || [[ "$name" == -* ]] || [[ "$name" == */* ]] || [[ "$name" == *..* ]]; then
+        _is_json && _json_error "Invalid feature name '${name}': cannot contain '/', '..', or start with '-'"
+        echo -e "${RED}Error: Invalid feature name '${name}'${NC}" >&2
+        echo "Names cannot contain '/', '..', or start with '-'." >&2
+        exit 1
+    fi
+}
+
+# Get the feature storage directory for a feature name
+get_feature_dir() {
+    _validate_feature_name "$1"
+    echo "$FEATURES_DIR/$1"
+}
+
+# Get the archived feature storage directory for a feature name
+get_archived_feature_dir() {
+    _validate_feature_name "$1"
+    echo "$FEATURES_DIR/archived/$1"
+}
+
+# Ensure feature directory exists
+ensure_feature_dir() {
+    mkdir -p "$(get_feature_dir "$1")"
+}
+
+# Migrate legacy layout (AGENTS.md.*, tasks.*, .claude-session-*) to .codex/features/
+migrate_legacy_layout() {
+    local migrated=false
+
+    # Migrate active features: AGENTS.md.{name} (excluding archived)
+    for f in AGENTS.md.*; do
+        [ -f "$f" ] || continue
+        local name="${f#AGENTS.md.}"
+        # Skip archived files (handled below)
+        case "$name" in archived.*) continue ;; esac
+        local dest="$FEATURES_DIR/$name"
+        mkdir -p "$dest"
+        mv "$f" "$dest/AGENTS.md"
+        migrated=true
+    done
+
+    # Migrate archived features: AGENTS.md.archived.{name}
+    for f in AGENTS.md.archived.*; do
+        [ -f "$f" ] || continue
+        local name="${f#AGENTS.md.archived.}"
+        local dest="$FEATURES_DIR/archived/$name"
+        mkdir -p "$dest"
+        mv "$f" "$dest/AGENTS.md"
+        migrated=true
+    done
+
+    # Migrate active task dirs: tasks.{name}/ (excluding archived and tmp)
+    for d in tasks.*; do
+        [ -d "$d" ] || continue
+        local name="${d#tasks.}"
+        case "$name" in archived.*|*.tmp.*) continue ;; esac
+        local dest="$FEATURES_DIR/$name"
+        mkdir -p "$dest"
+        if [ -d "$dest/tasks" ]; then
+            local tmp="$dest/tasks.tmp.$$"
+            mv "$dest/tasks" "$tmp"
+            mv "$d" "$dest/tasks"
+            rm -rf "$tmp"
+        else
+            mv "$d" "$dest/tasks"
+        fi
+        migrated=true
+    done
+
+    # Migrate archived task dirs: tasks.archived.{name}/
+    for d in tasks.archived.*; do
+        [ -d "$d" ] || continue
+        local name="${d#tasks.archived.}"
+        case "$name" in *.tmp.*) continue ;; esac
+        local dest="$FEATURES_DIR/archived/$name"
+        mkdir -p "$dest"
+        if [ -d "$dest/tasks" ]; then
+            local tmp="$dest/tasks.tmp.$$"
+            mv "$dest/tasks" "$tmp"
+            mv "$d" "$dest/tasks"
+            rm -rf "$tmp"
+        else
+            mv "$d" "$dest/tasks"
+        fi
+        migrated=true
+    done
+
+    # Migrate session files: .claude-session-{name}
+    for f in .claude-session-*; do
+        [ -f "$f" ] || continue
+        local name="${f#.claude-session-}"
+        # Determine if this feature is archived or active
+        if [ -d "$FEATURES_DIR/archived/$name" ]; then
+            mv "$f" "$FEATURES_DIR/archived/$name/session"
+        elif [ -d "$FEATURES_DIR/$name" ]; then
+            mv "$f" "$FEATURES_DIR/$name/session"
+        fi
+        # If neither dir exists, the session file is orphaned — leave it
+        migrated=true
+    done
+
+    if [ "$migrated" = true ]; then
+        echo -e "${GREEN}Migrated legacy feature files to .codex/features/${NC}"
+        echo -e "${YELLOW}Tip: Update your .gitignore to include .codex/features/ and .codex-last-seen-feature${NC}"
+    fi
+}
+
+# Run migration (idempotent — skips if no legacy files exist)
+migrate_legacy_layout
+
+# Get current git branch
+get_branch() {
+    git branch --show-current 2>/dev/null || echo "(unknown)"
+}
+
+# Check for uncommitted changes
+check_uncommitted() {
+    if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
+        return 1  # Has uncommitted changes
+    fi
+    # Also check for untracked files (optional - uncomment if you want to include)
+    # if [ -n "$(git ls-files --others --exclude-standard)" ]; then
+    #     return 1
+    # fi
+    return 0  # Clean
+}
+
+# Get list of features (excludes archived)
+# A feature is any directory that has AGENTS.md, session files, or tasks
+get_features() {
+    if [ -d "$FEATURES_DIR" ]; then
+        for d in "$FEATURES_DIR"/*/; do
+            [ -d "$d" ] || continue
+            local name="$(basename "$d")"
+            [ "$name" = "archived" ] && continue
+            # A feature exists if it has ANY artifact (AGENTS.md, session, tasks)
+            if [ -f "$d/AGENTS.md" ] || [ -f "$d/session" ] || [ -f "$d/session-latest" ] || [ -d "$d/tasks" ]; then
+                echo "$name"
+            fi
+        done | sort
+    fi
+}
+
+# Get list of archived features
+get_archived_features() {
+    if [ -d "$FEATURES_DIR/archived" ]; then
+        for d in "$FEATURES_DIR/archived"/*/; do
+            [ -d "$d" ] || continue
+            local name="$(basename "$d")"
+            if [ -f "$d/AGENTS.md" ] || [ -f "$d/session" ] || [ -f "$d/session-latest" ] || [ -d "$d/tasks" ]; then
+                echo "$name"
+            fi
+        done | sort
+    fi
+}
+
+# Get current feature
+get_current() {
+    if [ -f "$TRACKER_FILE" ]; then
+        cat "$TRACKER_FILE"
+    elif [ -f "$CLAUDE_MD" ]; then
+        echo "(active but untracked)"
+    else
+        echo "(none)"
+    fi
+}
+
+# Ensure docs folder exists for a feature
+ensure_docs_folder() {
+    local name="$1"
+    local docs_path="$DOCS_DIR/$name"
+    if [ ! -d "$docs_path" ]; then
+        mkdir -p "$docs_path"
+        _is_json || echo -e "${BLUE}Created docs folder: docs/${name}/${NC}"
+    fi
+}
+
+# Save tasks/ folder for a feature (atomic via mv)
+save_tasks() {
+    local feature="$1"
+    if [ -d "$TASKS_DIR" ]; then
+        local feature_dir="$(get_feature_dir "$feature")"
+        ensure_feature_dir "$feature"
+        local saved="$feature_dir/tasks"
+        # Sync root tasks/ to storage (copy, not move — keeps stored version for git)
+        # Idempotent: skip if content is already identical (avoids dirty git state)
+        if [ ! -d "$saved" ] || ! diff -rq "$TASKS_DIR" "$saved" >/dev/null 2>&1; then
+            rm -rf "$saved"
+            cp -R "$TASKS_DIR" "$saved"
+        fi
+        _is_json || echo -e "${BLUE}Saved tasks/ → ${feature}${NC}"
+    else
+        _is_json || echo -e "${YELLOW}Warning: No tasks/ directory found to save for '${feature}'${NC}"
+    fi
+}
+
+# Restore tasks/ folder for a feature (copy from storage, not move — keeps stored version for git)
+restore_tasks() {
+    local feature="$1"
+    local saved="$(get_feature_dir "$feature")/tasks"
+    if [ -d "$saved" ]; then
+        rm -rf "$TASKS_DIR"
+        cp -R "$saved" "$TASKS_DIR"
+        _is_json || echo -e "${BLUE}Restored tasks/ for ${feature}${NC}"
+    else
+        _is_json || echo -e "${YELLOW}No saved tasks found for '${feature}', creating fresh scaffold${NC}"
+        create_fresh_tasks
+    fi
+}
+
+# Untrack workspace files that git is still tracking despite .gitignore.
+# This happens when files were committed before their .gitignore entries were added.
+# Git's .gitignore only prevents NEW files from being tracked; already-tracked
+# files continue to show up in diffs and commits — causing silent overwrites
+# when feature-switching replaces their content.
+_untrack_gitignored_workspace() {
+    local to_untrack=()
+    for path in "tasks" "AGENTS.md" ".codex-current-feature" ".codex-last-seen-feature" ".codex-with-refs"; do
+        # Use git check-ignore --no-index — handles all pattern variants (/tasks, tasks/, wildcards, global gitignore)
+        # --no-index is required because these files ARE tracked (that's the bug we're fixing)
+        git -C "$PROJECT_DIR" check-ignore --no-index -q "$path" 2>/dev/null || continue
+        if [ -n "$(git -C "$PROJECT_DIR" ls-files --cached -- "$path" 2>/dev/null)" ]; then
+            to_untrack+=("$path")
+        fi
+    done
+    [ ${#to_untrack[@]} -eq 0 ] && return 0
+    git -C "$PROJECT_DIR" rm --cached -rq -- "${to_untrack[@]}" >/dev/null 2>&1 || true
+    _is_json || echo -e "${YELLOW}Untracked ${#to_untrack[@]} workspace path(s) from git index (committed before .gitignore)${NC}"
+}
+
+# Find the transcript file for a saved Codex session ID.
+get_codex_session_file() {
+    local session_id="$1"
+    [ -n "$session_id" ] || return 1
+    find "$HOME/.codex/sessions" -type f -name "*-${session_id}.jsonl" 2>/dev/null | head -1
+}
+
+_codex_session_matches_project() {
+    local transcript="$1"
+    grep -Fq "\"cwd\":\"$PROJECT_DIR\"" "$transcript" 2>/dev/null || \
+        grep -Fq "\"cwd\":\"$PROJECT_DIR/" "$transcript" 2>/dev/null
+}
+
+# Get the most recent Codex session ID for this project. Prefer the live thread ID
+# when cody-switch is running inside Codex, otherwise search the saved transcripts.
+get_latest_session_id() {
+    if [ -n "${CODEX_THREAD_ID:-}" ]; then
+        local live_transcript
+        live_transcript=$(get_codex_session_file "$CODEX_THREAD_ID" || true)
+        if [ -z "$live_transcript" ] || _codex_session_matches_project "$live_transcript"; then
+            echo "$CODEX_THREAD_ID"
+            return 0
+        fi
+    fi
+
+    [ -d "$HOME/.codex/sessions" ] || return 1
+
+    local activated_at=""
+    if [ -f "$TRACKER_FILE" ]; then
+        activated_at=$(stat -f %m "$TRACKER_FILE" 2>/dev/null || stat -c %Y "$TRACKER_FILE" 2>/dev/null)
+    fi
+
+    local best_file=""
+    local best_time=0
+    while IFS= read -r transcript; do
+        [ -f "$transcript" ] || continue
+        local fmtime
+        fmtime=$(stat -f %m "$transcript" 2>/dev/null || stat -c %Y "$transcript" 2>/dev/null)
+        if [ -n "$activated_at" ] && [ "$fmtime" -lt "$activated_at" ]; then
+            continue
+        fi
+        _codex_session_matches_project "$transcript" || continue
+        if [ -z "$best_file" ] || [ "$fmtime" -gt "$best_time" ]; then
+            best_file="$transcript"
+            best_time="$fmtime"
+        fi
+    done < <(find "$HOME/.codex/sessions" -type f -name '*.jsonl' 2>/dev/null)
+
+    [ -n "$best_file" ] || return 1
+    basename "$best_file" .jsonl | sed -E 's/^.*-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/\1/'
+}
+
+save_session() {
+    local feature="$1"
+    local session_id
+    session_id=$(get_latest_session_id) || {
+        _is_json || echo -e "${YELLOW}No Codex session found for '${feature}'${NC}"
+        return 0
+    }
+    ensure_feature_dir "$feature"
+    local fdir="$(get_feature_dir "$feature")"
+    echo "$session_id" > "$fdir/session-latest"
+    if [ ! -f "$fdir/session" ]; then
+        echo "$session_id" > "$fdir/session"
+    fi
+    _is_json || echo -e "${BLUE}Saved Codex session ID for '${feature}'${NC}"
+}
+
+# Validate a saved session by checking that its transcript still exists and
+# still belongs to this project.
+_validate_session() {
+    local session_id="$1"
+    local source_file="$2"
+    local feature="$3"
+
+    local transcript
+    transcript=$(get_codex_session_file "$session_id") || {
+        rm -f "$source_file"
+        return 1
+    }
+
+    if [ ! -f "$transcript" ]; then
+        echo -e "${YELLOW}Session ${session_id:0:8}… for '${feature}' no longer exists${NC}"
+        rm -f "$source_file"
+        return 1
+    fi
+
+    if ! _codex_session_matches_project "$transcript"; then
+        echo -e "${YELLOW}Session ${session_id:0:8}… for '${feature}' points to a different project${NC}"
+        rm -f "$source_file"
+        return 1
+    fi
+
+    return 0
+}
+
+# Restore (display) the Codex session resume commands for a feature (dual: checkpoint + latest)
+restore_session() {
+    local feature="$1"
+    local fdir="$(get_feature_dir "$feature")"
+
+    local checkpoint_file="$fdir/session"
+    local latest_file="$fdir/session-latest"
+    local summary_file="$fdir/session-summary"
+
+    # Read and validate checkpoint
+    local checkpoint_id=""
+    if [ -f "$checkpoint_file" ]; then
+        checkpoint_id=$(cat "$checkpoint_file")
+        if [ -n "$checkpoint_id" ]; then
+            _validate_session "$checkpoint_id" "$checkpoint_file" "$feature" || checkpoint_id=""
+        fi
+    fi
+
+    # Read and validate latest
+    local latest_id=""
+    if [ -f "$latest_file" ]; then
+        latest_id=$(cat "$latest_file")
+        if [ -n "$latest_id" ]; then
+            _validate_session "$latest_id" "$latest_file" "$feature" || latest_id=""
+        fi
+    fi
+
+    # Nothing to show
+    if [ -z "$checkpoint_id" ] && [ -z "$latest_id" ]; then
+        return 0
+    fi
+
+    # Read summary if available
+    local summary=""
+    if [ -f "$summary_file" ]; then
+        summary=$(cat "$summary_file")
+    fi
+
+    echo ""
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${GREEN}Previous Codex session(s) for '${feature}'${NC}"
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+
+    if [ -n "$checkpoint_id" ] && [ -n "$latest_id" ] && [ "$checkpoint_id" != "$latest_id" ]; then
+        echo ""
+        echo -e "  ${YELLOW}Checkpoint (fork point):${NC}"
+        if [ -n "$summary" ]; then
+            echo -e "  ${BLUE}${summary}${NC}"
+        fi
+        echo -e "  ${CYAN}codex fork ${checkpoint_id}${NC}  ${GREEN}← recommended${NC}"
+        echo ""
+        echo -e "  ${YELLOW}Latest session:${NC}"
+        echo -e "  ${CYAN}codex resume ${latest_id}${NC}"
+        echo ""
+    elif [ -n "$checkpoint_id" ]; then
+        echo ""
+        if [ -n "$summary" ]; then
+            echo -e "  ${BLUE}${summary}${NC}"
+            echo ""
+        fi
+        echo -e "  ${YELLOW}Resume with full context:${NC}"
+        echo -e "  ${CYAN}codex resume ${checkpoint_id}${NC}"
+        echo ""
+        echo -e "  ${YELLOW}Or fork into a new session (recommended):${NC}"
+        echo -e "  ${CYAN}codex fork ${checkpoint_id}${NC}"
+        echo ""
+    else
+        echo ""
+        echo -e "  ${YELLOW}Resume latest session:${NC}"
+        echo -e "  ${CYAN}codex resume ${latest_id}${NC}"
+        echo ""
+    fi
+}
+
+# Pin the current session as a checkpoint with an optional summary
+pin_session() {
+    local current=$(get_current)
+    if [ "$current" = "(none)" ] || [ "$current" = "(active but untracked)" ]; then
+        _is_json && _json_error "No active feature to pin a session for"
+        echo -e "${RED}Error: No active feature to pin a session for${NC}" >&2
+        exit 1
+    fi
+
+    local session_id
+    session_id=$(get_latest_session_id) || {
+        _is_json && _json_error "No Codex session found for '${current}'"
+        echo -e "${RED}Error: No Codex session found for '${current}'${NC}" >&2
+        exit 1
+    }
+
+    local fdir="$(get_feature_dir "$current")"
+    ensure_feature_dir "$current"
+
+    local summary=""
+    if _is_json; then
+        # Skip interactive prompt in JSON mode
+        :
+    else
+        echo -e "${BOLD}Pinning session for '${current}'${NC}"
+        echo -e "Session: ${CYAN}${session_id}${NC}"
+        echo ""
+        echo -en "${YELLOW}One-sentence summary (Enter to skip):${NC} "
+        read -r summary
+    fi
+
+    echo "$session_id" > "$fdir/session"
+    if [ -n "$summary" ]; then
+        echo "$summary" > "$fdir/session-summary"
+    else
+        rm -f "$fdir/session-summary"
+    fi
+
+    if _is_json; then
+        _json_emit "success" "@bool:true" "command" "pin-session" \
+            "feature" "$current" "session_id" "$session_id"
+        return
+    fi
+
+    echo ""
+    echo -e "${GREEN}Pinned checkpoint for '${current}'${NC}"
+    if [ -n "$summary" ]; then
+        echo -e "  ${BLUE}${summary}${NC}"
+    fi
+}
+
+# Create fresh tasks/ scaffold
+create_fresh_tasks() {
+    local target="${1:-$TASKS_DIR}"
+    mkdir -p "$target"
+    if [ ! -f "$target/todo.md" ]; then
+        cat > "$target/todo.md" << 'SCAFFOLD'
+# TODO
+
+## Plan
+
+- [ ] ...
+
+## Review
+
+_(filled after implementation)_
+SCAFFOLD
+    fi
+    if [ ! -f "$target/lessons.md" ]; then
+        local global_lessons="$FEATURES_DIR/lessons-global.md"
+        if [ -f "$global_lessons" ]; then
+            cat > "$target/lessons.md" << SCAFFOLD
+# Lessons Learned
+
+> Global lessons are in \`.codex/features/lessons-global.md\` — read them at session start.
+
+_(capture corrections and patterns here)_
+SCAFFOLD
+        else
+            cat > "$target/lessons.md" << 'SCAFFOLD'
+# Lessons Learned
+
+_(capture corrections and patterns here)_
+SCAFFOLD
+        fi
+    fi
+    _is_json || echo -e "${BLUE}Created fresh tasks/ scaffold${NC}"
+}
+
+# Create a minimal AGENTS.md scaffold for a feature
+_create_claude_scaffold() {
+    local name="$1"
+    local dest="$2"
+    cat > "$dest" << SCAFFOLD
+# Feature: ${name}
+
+<!-- Add feature-specific context here -->
+SCAFFOLD
+}
+
+# === Worktree Helpers ===
+
+# Check if a feature is backed by a git worktree
+is_worktree_feature() {
+    local name="$1"
+    [ -f "$FEATURES_DIR/$name/worktree" ]
+}
+
+# Get the worktree path for a feature
+get_worktree_path() {
+    local name="$1"
+    local marker="$FEATURES_DIR/$name/worktree"
+    if [ -f "$marker" ]; then
+        local path
+        path="$(cat "$marker")"
+        # Validate path is under WORKTREES_DIR to prevent tampering
+        [[ "$path" == "$WORKTREES_DIR/"* ]] || return 1
+        echo "$path"
+    else
+        return 1
+    fi
+}
+
+# Validate that a feature name is safe for use as a git branch ref
+_validate_worktree_name() {
+    local name="$1"
+    if ! git check-ref-format --branch "worktree-$name" >/dev/null 2>&1; then
+        _is_json && _json_error "Invalid feature name for worktree: '${name}' (must be valid git branch name)"
+        echo -e "${RED}Error: Invalid feature name for worktree: '${name}'${NC}" >&2
+        echo "Feature names used with --worktree must be valid git branch names." >&2
+        echo "Avoid spaces, '..', '~', '^', ':', '?', '*', '[', '\\' and leading '-'." >&2
+        exit 1
+    fi
+}
+
+# Create a git worktree for a feature
+# Writes the worktree path to the feature's marker file
+create_worktree() {
+    local name="$1"
+    local worktree_dir="$WORKTREES_DIR/$name"
+    local branch_name="worktree-$name"
+
+    # Determine base ref (match Codex convention: origin/HEAD, fallback to HEAD)
+    local base_ref=""
+    base_ref=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/||')
+    if [ -z "$base_ref" ]; then
+        base_ref="HEAD"
+    fi
+
+    mkdir -p "$WORKTREES_DIR"
+
+    # Check if branch already exists
+    if git rev-parse --verify "$branch_name" >/dev/null 2>&1; then
+        # Branch exists — check if it's already a worktree
+        local existing_wt
+        existing_wt=$(git worktree list --porcelain 2>/dev/null | grep -A2 "^worktree " | grep -B1 "branch refs/heads/$branch_name" | head -1 | sed 's/^worktree //')
+        if [ -n "$existing_wt" ]; then
+            _is_json && _json_error "Branch '${branch_name}' is already checked out in worktree: ${existing_wt}"
+            echo -e "${RED}Error: Branch '${branch_name}' is already checked out in worktree: ${existing_wt}${NC}" >&2
+            exit 1
+        fi
+        # Reuse existing branch
+        git worktree add "$worktree_dir" "$branch_name" >/dev/null 2>&1 || {
+            _is_json && _json_error "Failed to create worktree at ${worktree_dir}"
+            echo -e "${RED}Error: Failed to create worktree at ${worktree_dir}${NC}" >&2
+            exit 1
+        }
+    else
+        # Create new branch
+        git worktree add -b "$branch_name" "$worktree_dir" "$base_ref" >/dev/null 2>&1 || {
+            _is_json && _json_error "Failed to create worktree at ${worktree_dir}"
+            echo -e "${RED}Error: Failed to create worktree at ${worktree_dir}${NC}" >&2
+            exit 1
+        }
+    fi
+
+    # Store worktree path in feature metadata
+    echo "$worktree_dir" > "$(get_feature_dir "$name")/worktree"
+
+    # Copy gitignored files from .worktreeinclude
+    _copy_worktreeinclude "$worktree_dir"
+}
+
+# Copy gitignored files specified in .worktreeinclude to a worktree
+_copy_worktreeinclude() {
+    local worktree_dir="$1"
+    local include_file="$PROJECT_DIR/.worktreeinclude"
+
+    [ -f "$include_file" ] || return 0
+
+    while IFS= read -r pattern || [ -n "$pattern" ]; do
+        # Skip comments and empty lines
+        [[ "$pattern" =~ ^[[:space:]]*# ]] && continue
+        [[ "$pattern" =~ ^[[:space:]]*$ ]] && continue
+
+        # Expand glob relative to project root
+        local file
+        for file in "$PROJECT_DIR"/$pattern; do
+            [ -f "$file" ] || continue
+            # Validate file is within project dir (prevent path traversal)
+            local real_file
+            real_file="$(realpath "$file" 2>/dev/null)" || continue
+            [[ "$real_file" == "$PROJECT_DIR"/* ]] || continue
+            # Only copy if the file is gitignored
+            git check-ignore -q "$file" 2>/dev/null || continue
+            local rel="${file#$PROJECT_DIR/}"
+            local dest_dir="$worktree_dir/$(dirname "$rel")"
+            mkdir -p "$dest_dir"
+            cp "$file" "$worktree_dir/$rel"
+        done
+    done < "$include_file"
+}
+
+# Deploy AGENTS.md and tasks from feature storage into its worktree
+deploy_to_worktree() {
+    local name="$1"
+    local wt_path
+    wt_path="$(get_worktree_path "$name")" || return 1
+    local fdir="$(get_feature_dir "$name")"
+
+    [ -d "$wt_path" ] || return 1
+
+    # Deploy AGENTS.md
+    if [ -f "$fdir/AGENTS.md" ]; then
+        cp "$fdir/AGENTS.md" "$wt_path/AGENTS.md"
+    fi
+
+    # Deploy tasks (safe: copy to temp, verify, then swap)
+    if [ -d "$fdir/tasks" ]; then
+        local tmp_tasks
+        tmp_tasks="$(mktemp -d "$wt_path/tasks.XXXXXX")" && rm -rf "$tmp_tasks"
+        rm -rf "$tmp_tasks" 2>/dev/null
+        cp -R "$fdir/tasks" "$tmp_tasks"
+        if [ -d "$tmp_tasks" ]; then
+            rm -rf "$wt_path/tasks"
+            mv "$tmp_tasks" "$wt_path/tasks"
+        else
+            echo -e "${RED}Error: Failed to deploy tasks to worktree${NC}" >&2
+            rm -rf "$tmp_tasks" 2>/dev/null
+        fi
+    fi
+}
+
+# Sync AGENTS.md and tasks from a worktree back to feature storage
+sync_from_worktree() {
+    local name="$1"
+    local wt_path
+    wt_path="$(get_worktree_path "$name")" || return 1
+    local fdir="$(get_feature_dir "$name")"
+
+    [ -d "$wt_path" ] || return 1
+
+    # Sync AGENTS.md
+    if [ -f "$wt_path/AGENTS.md" ]; then
+        cp "$wt_path/AGENTS.md" "$fdir/AGENTS.md"
+    fi
+
+    # Sync tasks (safe: copy to temp, verify, then swap)
+    if [ -d "$wt_path/tasks" ]; then
+        local tmp_tasks
+        tmp_tasks="$(mktemp -d "$fdir/tasks.XXXXXX")" && rm -rf "$tmp_tasks"
+        rm -rf "$tmp_tasks" 2>/dev/null
+        cp -R "$wt_path/tasks" "$tmp_tasks"
+        if [ -d "$tmp_tasks" ]; then
+            rm -rf "$fdir/tasks"
+            mv "$tmp_tasks" "$fdir/tasks"
+        else
+            echo -e "${RED}Error: Failed to sync tasks from worktree${NC}" >&2
+            rm -rf "$tmp_tasks" 2>/dev/null
+        fi
+    fi
+}
+
+# Remove a worktree and clean up its branch and marker
+remove_worktree() {
+    local name="$1"
+    local force="${2:-false}"
+    local wt_path
+    wt_path="$(get_worktree_path "$name")" || return 0
+    local branch_name="worktree-$name"
+
+    if [ ! -d "$wt_path" ]; then
+        # Worktree dir already gone — just clean up marker
+        rm -f "$(get_feature_dir "$name")/worktree"
+        return 0
+    fi
+
+    # Sync state before removal
+    sync_from_worktree "$name"
+
+    # Try clean removal first
+    if ! git worktree remove "$wt_path" 2>/dev/null; then
+        if [ "$force" = true ]; then
+            git worktree remove --force "$wt_path" 2>/dev/null || rm -rf "$wt_path"
+        else
+            _is_json || echo -e "${YELLOW}Warning: Worktree has uncommitted source changes (context files already synced to storage)${NC}"
+            git worktree remove --force "$wt_path" 2>/dev/null || rm -rf "$wt_path"
+        fi
+    fi
+
+    # Clean up branch
+    git branch -D "$branch_name" >/dev/null 2>&1 || true
+
+    # Clean up marker
+    rm -f "$(get_feature_dir "$name")/worktree"
+
+    # Clean up empty worktrees dir
+    rmdir "$WORKTREES_DIR" 2>/dev/null || true
+}
+
+# Strip --with reference content from AGENTS.md before saving
+strip_reference_contexts() {
+    if [ -f "$WITH_REFS_FILE" ] && [ -f "$CLAUDE_MD" ]; then
+        # Remove all reference blocks (portable: no sed -i which differs BSD vs GNU)
+        local tmpfile
+        tmpfile=$(mktemp)
+        sed '/<!-- cody-switch-ref:.*:start -->/,/<!-- cody-switch-ref:.*:end -->/d' "$CLAUDE_MD" > "$tmpfile"
+        # Remove trailing blank lines left behind
+        sed -e :a -e '/^\n*$/{$d;N;ba' -e '}' "$tmpfile" > "$CLAUDE_MD"
+        rm -f "$tmpfile"
+        rm -f "$WITH_REFS_FILE"
+        echo -e "${BLUE}Stripped reference contexts from AGENTS.md${NC}"
+    fi
+}
+
+# Append a feature's AGENTS.md as read-only reference context
+append_reference_context() {
+    local ref_name="$1"
+    local ref_file="$(get_feature_dir "$ref_name")/AGENTS.md"
+
+    if [ ! -f "$ref_file" ]; then
+        echo -e "${RED}Error: Reference feature '${ref_name}' not found${NC}" >&2
+        return 1
+    fi
+
+    echo "" >> "$CLAUDE_MD"
+    echo "<!-- cody-switch-ref:${ref_name}:start -->" >> "$CLAUDE_MD"
+    echo "" >> "$CLAUDE_MD"
+    echo "---" >> "$CLAUDE_MD"
+    echo "# Reference: ${ref_name}" >> "$CLAUDE_MD"
+    echo "" >> "$CLAUDE_MD"
+    cat "$ref_file" >> "$CLAUDE_MD"
+    echo "" >> "$CLAUDE_MD"
+    echo "<!-- cody-switch-ref:${ref_name}:end -->" >> "$CLAUDE_MD"
+
+    # Track the reference
+    echo "$ref_name" >> "$WITH_REFS_FILE"
+}
+
+# Promote lessons from current feature to global lessons file
+promote_lesson() {
+    local target_level=""
+    case "${1:-}" in
+        --user)    target_level="user" ;;
+        --project) target_level="project" ;;
+    esac
+
+    local lessons_file="$TASKS_DIR/lessons.md"
+
+    if [ ! -f "$lessons_file" ]; then
+        _is_json && _json_error "No tasks/lessons.md found"
+        echo -e "${RED}Error: No tasks/lessons.md found${NC}" >&2
+        exit 1
+    fi
+
+    # Extract lesson headings (## lines)
+    local headings=()
+    local line_nums=()
+    local i=0
+    while IFS= read -r line; do
+        i=$((i+1))
+        if [[ "$line" =~ ^##\  ]]; then
+            headings+=("${line#\#\# }")
+            line_nums+=("$i")
+        fi
+    done < "$lessons_file"
+
+    if [ ${#headings[@]} -eq 0 ]; then
+        if _is_json; then
+            _json_emit "success" "@bool:true" "command" "promote-lesson" \
+                "headings" "@json:[]"
+            return
+        fi
+        echo -e "${YELLOW}No lesson headings (## ...) found in tasks/lessons.md${NC}"
+        exit 0
+    fi
+
+    # In JSON mode, list headings without prompting
+    if _is_json; then
+        local _h_json="["
+        local _h_first=true
+        for idx in "${!headings[@]}"; do
+            [ "$_h_first" = true ] && _h_first=false || _h_json+=","
+            _h_json+="\"${headings[$idx]}\""
+        done
+        _h_json+="]"
+        local _targets='[{"level":"project","path":".codex/features/lessons-global.md"},{"level":"user","path":"~/.codex/lessons-global.md"}]'
+        if [ -n "$target_level" ]; then
+            _json_emit "success" "@bool:true" "command" "promote-lesson" \
+                "target" "$target_level" \
+                "headings" "@json:$_h_json" \
+                "targets" "@json:$_targets"
+        else
+            _json_emit "success" "@bool:true" "command" "promote-lesson" \
+                "headings" "@json:$_h_json" \
+                "targets" "@json:$_targets"
+        fi
+        return
+    fi
+
+    echo -e "${BOLD}Lessons in tasks/lessons.md:${NC}"
+    echo ""
+    for idx in "${!headings[@]}"; do
+        echo -e "  ${CYAN}$((idx+1)))${NC} ${headings[$idx]}"
+    done
+    echo ""
+    echo -en "${YELLOW}Pick a number (or 'all') to promote:${NC} "
+    read -r choice
+
+    # Determine which lessons to promote
+    local to_promote=()
+    if [ "$choice" = "all" ]; then
+        to_promote=("${!headings[@]}")
+    elif [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le ${#headings[@]} ]; then
+        to_promote=($((choice-1)))
+    else
+        echo -e "${RED}Invalid choice${NC}" >&2
+        exit 1
+    fi
+
+    # Ask for destination if no explicit flag
+    if [ -z "$target_level" ]; then
+        echo ""
+        echo -e "${BOLD}Where to promote?${NC}"
+        echo -e "  ${CYAN}1)${NC} Project level ${DIM}(.codex/features/lessons-global.md)${NC} ${GREEN}(recommended)${NC}"
+        echo -e "  ${CYAN}2)${NC} User level ${DIM}(~/.codex/lessons-global.md)${NC}"
+        echo ""
+        echo -en "${YELLOW}Pick destination [1]:${NC} "
+        read -r dest_choice
+        case "${dest_choice:-1}" in
+            1) target_level="project" ;;
+            2) target_level="user" ;;
+            *)
+                echo -e "${RED}Invalid choice${NC}" >&2
+                exit 1
+                ;;
+        esac
+    fi
+
+    # Resolve target based on chosen level
+    local target_file target_label target_display
+    if [ "$target_level" = "user" ]; then
+        target_file="$CODEX_LESSONS_FILE"
+        target_label="user lessons"
+        target_display="$target_file"
+    else
+        target_file="$FEATURES_DIR/lessons-global.md"
+        target_label="project lessons"
+        target_display=".codex/features/lessons-global.md"
+    fi
+
+    # Extract and append each selected lesson
+    local target_dir
+    target_dir=$(dirname "$target_file")
+    mkdir -p "$target_dir"
+    local total_lines
+    total_lines=$(wc -l < "$lessons_file" | tr -d ' ')
+
+    local header
+    if [ "$target_level" = "user" ]; then
+        header="# User Lessons"
+    else
+        header="# Project Lessons"
+    fi
+
+    for idx in "${to_promote[@]}"; do
+        local start="${line_nums[$idx]}"
+        # Find end: next heading or EOF
+        local end="$total_lines"
+        local next_idx=$((idx+1))
+        if [ "$next_idx" -lt ${#line_nums[@]} ]; then
+            end=$((${line_nums[$next_idx]} - 1))
+        fi
+        # Extract the lesson block
+        local block
+        block=$(sed -n "${start},${end}p" "$lessons_file")
+        # Append to target file
+        if [ -f "$target_file" ]; then
+            echo "" >> "$target_file"
+        else
+            echo "$header" > "$target_file"
+            echo "" >> "$target_file"
+        fi
+        echo "$block" >> "$target_file"
+        echo -e "${GREEN}Promoted: ${headings[$idx]}${NC}"
+    done
+
+    echo ""
+    echo -e "${GREEN}Lessons saved to ${target_display}${NC}"
+}
+
+# Extract headings from a lessons file (## lines) into a newline-separated list
+_extract_headings() {
+    local file="$1"
+    [ -f "$file" ] || return 0
+    grep -E '^## ' "$file" | sed 's/^## //' || true
+}
+
+# Extract a lesson block from a file given its heading
+_extract_block() {
+    local file="$1"
+    local heading="$2"
+    local in_block=0
+    local block=""
+    while IFS= read -r line; do
+        if [ "$in_block" -eq 1 ]; then
+            if [[ "$line" =~ ^##\  ]]; then
+                break
+            fi
+            block+="$line"$'\n'
+        elif [ "$line" = "## $heading" ]; then
+            in_block=1
+            block="## $heading"$'\n'
+        fi
+    done < "$file"
+    # Trim trailing blank lines
+    echo "$block" | sed -e :a -e '/^[[:space:]]*$/{ $d; N; ba; }'
+}
+
+# Audit all features and promote unpromoted lessons
+promote_audit() {
+    local project_file="$FEATURES_DIR/lessons-global.md"
+    local user_file="$CODEX_LESSONS_FILE"
+    local current
+    current=$(get_current)
+
+    # Collect existing headings from both targets
+    local project_headings=""
+    local user_headings=""
+    if [ -f "$project_file" ]; then
+        project_headings=$(_extract_headings "$project_file")
+    fi
+    if [ -f "$user_file" ]; then
+        user_headings=$(_extract_headings "$user_file")
+    fi
+
+    # Scan all features for lessons
+    # Arrays: lesson_headings[i], lesson_sources[i], lesson_files[i]
+    local -a lesson_headings=()
+    local -a lesson_sources=()
+    local -a lesson_files=()
+
+    # Build list of (file, source_name) pairs to scan
+    local -a scan_files=()
+    local -a scan_sources=()
+
+    # Active feature
+    if [ "$current" != "(none)" ] && [ "$current" != "(active but untracked)" ]; then
+        if [ -f "$TASKS_DIR/lessons.md" ]; then
+            scan_files+=("$TASKS_DIR/lessons.md")
+            scan_sources+=("$current (active)")
+        fi
+    fi
+
+    # Stored features
+    local features
+    features=$(get_features)
+    for name in $features; do
+        [ "$name" = "$current" ] && continue
+        local stored="$(get_feature_dir "$name")/tasks/lessons.md"
+        if [ -f "$stored" ]; then
+            scan_files+=("$stored")
+            scan_sources+=("$name")
+        fi
+    done
+
+    # Scan each file for unpromoted headings
+    local si
+    for si in "${!scan_files[@]}"; do
+        local file="${scan_files[$si]}"
+        local source_name="${scan_sources[$si]}"
+        local headings_text
+        headings_text=$(_extract_headings "$file")
+        [ -z "$headings_text" ] && continue
+        while IFS= read -r heading; do
+            [ -z "$heading" ] && continue
+            # Skip if already in project-global
+            if [ -n "$project_headings" ] && echo "$project_headings" | grep -qxF "$heading"; then
+                continue
+            fi
+            # Skip if already in user-global
+            if [ -n "$user_headings" ] && echo "$user_headings" | grep -qxF "$heading"; then
+                continue
+            fi
+            # Dedup across features
+            local already=0
+            local k
+            for k in "${!lesson_headings[@]}"; do
+                if [ "${lesson_headings[$k]}" = "$heading" ]; then
+                    lesson_sources[$k]="${lesson_sources[$k]}, $source_name"
+                    already=1
+                    break
+                fi
+            done
+            if [ "$already" -eq 0 ]; then
+                lesson_headings+=("$heading")
+                lesson_sources+=("$source_name")
+                lesson_files+=("$file")
+            fi
+        done <<< "$headings_text"
+    done
+
+    if [ ${#lesson_headings[@]} -eq 0 ]; then
+        if _is_json; then
+            _json_emit "success" "@bool:true" "command" "promote-audit" "unpromoted" "@json:[]"
+            return
+        fi
+        echo -e "${GREEN}All lessons are already promoted. Nothing to do.${NC}"
+        return
+    fi
+
+    if _is_json; then
+        local _u_json="["
+        local _u_first=true
+        for idx in "${!lesson_headings[@]}"; do
+            [ "$_u_first" = true ] && _u_first=false || _u_json+=","
+            _u_json+="{\"heading\":\"${lesson_headings[$idx]}\",\"sources\":\"${lesson_sources[$idx]}\"}"
+        done
+        _u_json+="]"
+        _json_emit "success" "@bool:true" "command" "promote-audit" \
+            "unpromoted" "@json:$_u_json"
+        return
+    fi
+
+    echo -e "${BOLD}Unpromoted lessons across all features (${#lesson_headings[@]} total):${NC}"
+    echo ""
+    for idx in "${!lesson_headings[@]}"; do
+        echo -e "  ${CYAN}$((idx+1)))${NC} ${lesson_headings[$idx]}"
+        echo -e "      ${YELLOW}from:${NC} ${lesson_sources[$idx]}"
+    done
+    echo ""
+    echo -e "Use ${CYAN}cody-switch prompt promote-audit${NC} if you want the bundled review prompt."
+}
+
+# List features
+list_features() {
+    local show_all="$1"
+    local current_branch=$(get_branch)
+    local project_name=$(basename "$PROJECT_DIR")
+    local current=$(get_current)
+
+    if _is_json; then
+        # Build JSON via python3 for correct escaping
+        local features_json="["
+        local first=true
+        for feature in $(get_features); do
+            local fdir="$(get_feature_dir "$feature")"
+            local has_docs=false; [ -d "$DOCS_DIR/$feature" ] && has_docs=true
+            local has_tasks=false; [ -d "$fdir/tasks" ] && has_tasks=true
+            local has_session=false; ([ -f "$fdir/session" ] || [ -f "$fdir/session-latest" ]) && has_session=true
+            local has_worktree=false; local worktree_path=""
+            if is_worktree_feature "$feature"; then
+                has_worktree=true
+                worktree_path="$(get_worktree_path "$feature")"
+            fi
+            # Escape strings for safe JSON interpolation
+            local safe_name="${feature//\\/\\\\}"
+            safe_name="${safe_name//\"/\\\"}"
+            local safe_wt_path="${worktree_path//\\/\\\\}"
+            safe_wt_path="${safe_wt_path//\"/\\\"}"
+            local health="ok"
+            if [ ! -f "$fdir/AGENTS.md" ] && [ "$feature" != "$current" ]; then
+                health="missing_claude_md"
+            elif [ -f "$fdir/AGENTS.md" ] && [ ! -s "$fdir/AGENTS.md" ]; then
+                health="empty_claude_md"
+            fi
+            local is_current=false; [ "$feature" = "$current" ] && is_current=true
+            [ "$first" = true ] && first=false || features_json+=","
+            features_json+="{\"name\":\"$safe_name\",\"current\":$is_current,\"has_docs\":$has_docs,\"has_tasks\":$has_tasks,\"has_session\":$has_session,\"has_worktree\":$has_worktree,\"worktree_path\":\"$safe_wt_path\",\"health\":\"$health\"}"
+        done
+        features_json+="]"
+        local archived_json="["
+        first=true
+        for feature in $(get_archived_features); do
+            local safe_arch="${feature//\\/\\\\}"
+            safe_arch="${safe_arch//\"/\\\"}"
+            [ "$first" = true ] && first=false || archived_json+=","
+            archived_json+="\"$safe_arch\""
+        done
+        archived_json+="]"
+        _json_emit "success" "@bool:true" "command" "list" \
+            "project" "$project_name" "branch" "$current_branch" \
+            "current" "$current" \
+            "features" "@json:$features_json" \
+            "archived" "@json:$archived_json" \
+            "archived_count" "@int:$(get_archived_features | wc -w | tr -d ' ')"
+        return
+    fi
+
+    echo -e "${BOLD}Available AGENTS.md contexts:${NC}"
+    echo ""
+    echo -e "  ${YELLOW}Project:${NC}    ${CYAN}${project_name}${NC} (${PROJECT_DIR})"
+    echo -e "  ${YELLOW}Git branch:${NC} ${CYAN}${current_branch}${NC}"
+    echo ""
+
+    local i=1
+
+    # Show current active if exists
+    if [ -f "$CLAUDE_MD" ]; then
+        local active_indicators=""
+        if [ -d "$TASKS_DIR" ]; then
+            active_indicators=" ${BLUE}[tasks]${NC}"
+        fi
+        local ref_indicator=""
+        if [ -f "$WITH_REFS_FILE" ]; then
+            local ref_count
+            ref_count=$(wc -l < "$WITH_REFS_FILE" | tr -d ' ')
+            ref_indicator=" ${BLUE}(+${ref_count} ref)${NC}"
+        fi
+        echo -e "  ${GREEN}* ACTIVE: ${current}${NC}${active_indicators}${ref_indicator}"
+        echo ""
+    fi
+
+    # List all feature files
+    local orphan_count=0
+    for feature in $(get_features); do
+        local indicators=""
+        local fdir="$(get_feature_dir "$feature")"
+        if [ -d "$DOCS_DIR/$feature" ]; then
+            indicators="${indicators} ${BLUE}[docs]${NC}"
+        fi
+        if [ -d "$fdir/tasks" ]; then
+            indicators="${indicators} ${BLUE}[tasks]${NC}"
+        fi
+        if [ -f "$fdir/session" ] || [ -f "$fdir/session-latest" ]; then
+            indicators="${indicators} ${CYAN}[session]${NC}"
+        fi
+        if is_worktree_feature "$feature"; then
+            indicators="${indicators} ${CYAN}[worktree]${NC}"
+        fi
+        # Warn about missing or empty AGENTS.md
+        if [ ! -f "$fdir/AGENTS.md" ] && [ "$feature" != "$current" ]; then
+            indicators="${indicators} ${RED}[NO AGENTS.md]${NC}"
+            orphan_count=$((orphan_count + 1))
+        elif [ -f "$fdir/AGENTS.md" ] && [ ! -s "$fdir/AGENTS.md" ]; then
+            indicators="${indicators} ${YELLOW}[empty]${NC}"
+        fi
+        if [ "$feature" = "$current" ]; then
+            echo -e "  ${CYAN}${i})${NC} ${feature} ${GREEN}(current)${NC}${indicators}"
+        else
+            echo -e "  ${CYAN}${i})${NC} ${feature}${indicators}"
+        fi
+        i=$((i+1))
+    done
+
+    if [ "$orphan_count" -gt 0 ]; then
+        echo ""
+        echo -e "  ${RED}${orphan_count} feature(s) have lost their AGENTS.md — run 'cody-switch doctor' to diagnose${NC}"
+    fi
+
+    echo ""
+
+    # Handle archived features
+    local archived=($(get_archived_features))
+    local archived_count=${#archived[@]}
+
+    if [ "$archived_count" -gt 0 ]; then
+        if [ "$show_all" = "--all" ] || [ "$show_all" = "-a" ]; then
+            echo -e "${BOLD}Archived:${NC}"
+            echo ""
+            for feature in "${archived[@]}"; do
+                local indicators=""
+                local afdir="$(get_archived_feature_dir "$feature")"
+                if [ -d "$DOCS_DIR/archived/$feature" ]; then
+                    indicators="${indicators} ${BLUE}[docs]${NC}"
+                fi
+                if [ -d "$afdir/tasks" ]; then
+                    indicators="${indicators} ${BLUE}[tasks]${NC}"
+                fi
+                echo -e "  ${YELLOW}-${NC} ${feature}${indicators}"
+            done
+            echo ""
+        else
+            echo -e "  ${YELLOW}(${archived_count} archived — use 'list --all' to show)${NC}"
+            echo ""
+        fi
+    fi
+
+    echo -e "${YELLOW}Usage:${NC} cody-switch <number> or cody-switch <name>"
+}
+
+# Safe file move: cp + verify + rm (prevents data loss on interruption)
+safe_move() {
+    local src="$1"
+    local dst="$2"
+    if [ ! -f "$src" ]; then
+        echo -e "${RED}Error: safe_move source does not exist: ${src}${NC}" >&2
+        return 1
+    fi
+    cp "$src" "$dst"
+    # Verify destination was written: file must exist, and if source had content, dest must too
+    if [ ! -f "$dst" ]; then
+        echo -e "${RED}Error: safe_move destination was not created: ${dst}${NC}" >&2
+        echo -e "${YELLOW}Source preserved at: ${src}${NC}" >&2
+        return 1
+    fi
+    if [ -s "$src" ] && [ ! -s "$dst" ]; then
+        echo -e "${RED}Error: safe_move destination is empty but source had content: ${dst}${NC}" >&2
+        echo -e "${YELLOW}Source preserved at: ${src}${NC}" >&2
+        return 1
+    fi
+    rm "$src"
+}
+
+# Save current AGENTS.md back to its feature file
+save_current() {
+    # Strip any --with reference content before saving
+    strip_reference_contexts
+
+    local current=$(get_current)
+
+    if [ "$current" != "(none)" ] && [ "$current" != "(active but untracked)" ]; then
+        # Tracked feature: sync root AGENTS.md back to storage (copy, not move)
+        _is_json || echo -e "${BLUE}Saving current context for '${current}'${NC}"
+        save_session "$current"
+        ensure_feature_dir "$current"
+        local dest="$(get_feature_dir "$current")/AGENTS.md"
+        if [ -f "$CLAUDE_MD" ]; then
+            # Idempotent: skip if content is already identical (avoids dirty git state)
+            if [ ! -f "$dest" ] || ! diff -q "$CLAUDE_MD" "$dest" >/dev/null 2>&1; then
+                cp "$CLAUDE_MD" "$dest"
+            fi
+        else
+            # Root AGENTS.md is missing (e.g., git checkout restored it to repo version)
+            # If feature already has a stored AGENTS.md, keep it; otherwise warn
+            if [ ! -f "$dest" ]; then
+                _is_json || echo -e "${YELLOW}Warning: No AGENTS.md at project root for '${current}' — feature AGENTS.md may have been lost${NC}"
+                _is_json || echo -e "${YELLOW}Creating minimal scaffold to prevent complete data loss${NC}"
+                _create_claude_scaffold "$current" "$dest"
+            fi
+        fi
+        save_tasks "$current"
+    elif [ "$current" = "(active but untracked)" ] && [ -f "$CLAUDE_MD" ]; then
+        if _is_json; then
+            # In JSON mode, skip interactive save prompt — leave AGENTS.md in place
+            return 0
+        fi
+        echo ""
+        echo -e "${YELLOW}Current AGENTS.md is not tracked by any feature.${NC}"
+        echo -en "${YELLOW}Enter a name to save it as (or 'skip' to leave it in place):${NC} "
+        read -r save_name
+
+        if [ "$save_name" = "skip" ] || [ -z "$save_name" ]; then
+            # NEVER delete root AGENTS.md silently — it may be the repo's committed file
+            echo -e "${YELLOW}Leaving AGENTS.md in place (not deleting)${NC}"
+            echo -e "${YELLOW}Note: The root AGENTS.md was NOT saved as a feature context${NC}"
+        else
+            if [ -f "$(get_feature_dir "$save_name")/AGENTS.md" ]; then
+                echo -e "${RED}Error: Feature '${save_name}' already exists. Aborting.${NC}" >&2
+                return 1
+            fi
+            ensure_docs_folder "$save_name"
+            save_session "$save_name"
+            ensure_feature_dir "$save_name"
+            cp "$CLAUDE_MD" "$(get_feature_dir "$save_name")/AGENTS.md"
+            save_tasks "$save_name"
+            echo -e "${GREEN}Saved current AGENTS.md as '${save_name}'${NC}"
+        fi
+    fi
+}
+
+# Save active feature context to storage (for commit workflow)
+save_command() {
+    local current=$(get_current)
+    if [ "$current" = "(none)" ] || [ "$current" = "(active but untracked)" ]; then
+        _is_json && _json_error "No active feature to save"
+        echo -e "${RED}Error: No active feature to save${NC}" >&2
+        return 1
+    fi
+
+    # Reuse save_current logic (strips refs, saves session, syncs AGENTS.md + tasks)
+    # Use if-guard instead of $? capture — set -e would exit before reaching $? on failure
+    if save_current; then
+        # Untrack workspace files that are still in git index despite .gitignore
+        _untrack_gitignored_workspace
+        if _is_json; then
+            _json_emit "success" "@bool:true" "command" "save" "feature" "$current"
+        else
+            echo ""
+            echo -e "${GREEN}Feature '${current}' context saved to .codex/features/${current}/${NC}"
+            echo -e "${YELLOW}Tip: Stage and commit .codex/features/ to include in your PR${NC}"
+        fi
+    else
+        _is_json && _json_error "Failed to save feature context"
+        return 1
+    fi
+}
+
+# Switch to a feature
+switch_to() {
+    local target="$1"
+    shift
+    local with_refs=()
+
+    # Parse --with flags (supports --with name and --with=name)
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --with=*) with_refs+=("${1#--with=}") ;;
+            --with) shift; [ $# -gt 0 ] && with_refs+=("$1") ;;
+        esac
+        shift
+    done
+
+    local feature_file="$(get_feature_dir "$target")/AGENTS.md"
+    local current_branch=$(get_branch)
+
+    # Check feature exists first (needed for both classic and worktree paths)
+    local feature_dir="$(get_feature_dir "$target")"
+    if [ ! -d "$feature_dir" ]; then
+        _is_json && _json_error "Feature '${target}' not found"
+        echo -e "${RED}Error: Feature '${target}' not found${NC}"
+        echo "Available features:"
+        get_features | sed 's/^/  /'
+        exit 1
+    fi
+
+    # Worktree feature: deploy context and print path (no root state change)
+    if is_worktree_feature "$target"; then
+        local wt_path
+        wt_path="$(get_worktree_path "$target")"
+
+        if [ ! -d "$wt_path" ]; then
+            _is_json && _json_error "Worktree directory missing: ${wt_path}. Run 'cody-switch doctor' to diagnose."
+            echo -e "${RED}Error: Worktree directory missing: ${wt_path}${NC}" >&2
+            echo "The worktree marker exists but the directory is gone." >&2
+            echo -e "Run ${CYAN}cody-switch doctor${NC} to diagnose." >&2
+            exit 1
+        fi
+
+        # Warn if --with was used with a worktree target
+        if [ ${#with_refs[@]} -gt 0 ]; then
+            _is_json || echo -e "${YELLOW}Note: --with is not used for worktree features (they have their own AGENTS.md)${NC}"
+        fi
+
+        deploy_to_worktree "$target"
+
+        if _is_json; then
+            _json_emit "success" "@bool:true" "command" "switch" \
+                "feature" "$target" "worktree" "@bool:true" \
+                "worktree_path" "$wt_path"
+            return
+        fi
+
+        echo ""
+        echo -e "${GREEN}Feature '${target}' uses a worktree.${NC}"
+        echo -e "${BLUE}Context synced to: ${wt_path}${NC}"
+        echo ""
+        echo -e "${YELLOW}To start working:${NC}"
+        echo -e "  ${CYAN}cd ${wt_path} && codex${NC}"
+        echo ""
+        return
+    fi
+
+    # Classic switch: check for uncommitted changes
+    if ! check_uncommitted; then
+        _is_json && _json_error "Cannot switch - uncommitted changes detected"
+        echo ""
+        echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${RED}ERROR: Cannot switch context - uncommitted changes detected!${NC}"
+        echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo ""
+        echo -e "  ${YELLOW}Current branch:${NC} ${CYAN}${current_branch}${NC}"
+        echo ""
+        echo -e "  ${YELLOW}Uncommitted changes:${NC}"
+        git status --short | head -10 | sed 's/^/    /'
+        local total=$(git status --short | wc -l | tr -d ' ')
+        if [ "$total" -gt 10 ]; then
+            echo -e "    ${YELLOW}... and $((total - 10)) more${NC}"
+        fi
+        echo ""
+        echo -e "  ${YELLOW}Please commit or stash your changes first:${NC}"
+        echo -e "    ${CYAN}git add . && git commit -m \"your message\"${NC}"
+        echo -e "    ${CYAN}git stash${NC}"
+        echo ""
+        exit 1
+    fi
+
+    # If AGENTS.md is missing but the feature dir exists (data loss recovery),
+    # the switch_to logic below will create a scaffold
+
+    # Validate all --with references exist before switching
+    # Note: the currently active feature's AGENTS.md is at project root, not in storage
+    local current_feature=$(get_current)
+    for ref in "${with_refs[@]}"; do
+        [ "$ref" = "$target" ] && continue
+        if [ "$ref" = "$current_feature" ]; then
+            # Active feature's file is at project root — it will be in storage after save
+            continue
+        fi
+        local ref_file="$(get_feature_dir "$ref")/AGENTS.md"
+        if [ ! -f "$ref_file" ]; then
+            _is_json && _json_error "Reference feature '${ref}' not found"
+            echo -e "${RED}Error: Reference feature '${ref}' not found${NC}" >&2
+            exit 1
+        fi
+    done
+
+    # Save current first
+    local previous_feature
+    previous_feature="$(get_current)"
+    save_current || exit 1
+
+    # Switch to new feature
+    _is_json || echo -e "${GREEN}Switching to: ${target}${NC}"
+    if [ ! -f "$feature_file" ]; then
+        # Feature AGENTS.md is missing (data loss) — create scaffold and warn
+        _is_json || echo -e "${YELLOW}Warning: AGENTS.md for '${target}' is missing (possible data loss)${NC}"
+        _is_json || echo -e "${YELLOW}Creating minimal scaffold. Run 'cody-switch doctor' for full diagnosis.${NC}"
+        _create_claude_scaffold "$target" "$feature_file"
+    fi
+    cp "$feature_file" "$CLAUDE_MD"
+    echo "$target" > "$TRACKER_FILE"
+    echo "$target" > "$PROJECT_DIR/.codex-last-seen-feature"
+    restore_tasks "$target"
+
+    # Untrack workspace files that are still in git index despite .gitignore
+    _untrack_gitignored_workspace
+
+    # Append --with reference contexts
+    local applied_refs=()
+    if [ ${#with_refs[@]} -gt 0 ]; then
+        _is_json || echo ""
+        for ref in "${with_refs[@]}"; do
+            if [ "$ref" = "$target" ]; then
+                _is_json || echo -e "${YELLOW}Skipping --with '${ref}' (same as primary)${NC}"
+                continue
+            fi
+            _is_json || echo -e "${BLUE}Adding reference context: ${ref}${NC}"
+            append_reference_context "$ref" || exit 1
+            applied_refs+=("$ref")
+        done
+    fi
+
+    if _is_json; then
+        local refs_str=""
+        refs_str=$(printf '%s\n' "${applied_refs[@]}")
+        _json_emit "success" "@bool:true" "command" "switch" \
+            "feature" "$target" "previous" "$previous_feature" \
+            "refs" "@array:$refs_str"
+        return
+    fi
+
+    echo ""
+    echo -e "${GREEN}Switched to '${target}'${NC}"
+
+    # Show session resume option if available
+    restore_session "$target"
+
+    echo ""
+    echo -e "${YELLOW}Codex note:${NC}"
+    echo -e "  ${CYAN}AGENTS.md${NC} and ${CYAN}tasks/${NC} are now switched on disk."
+    echo -e "  If you changed features mid-session, start a fresh ${CYAN}codex${NC} session for clean context."
+    echo ""
+}
+
+# Create new feature from current (save current as named)
+create_new() {
+    local name="$1"
+
+    if [ -z "$name" ]; then
+        _is_json && _json_error "Please provide a name for the new feature"
+        echo -e "${RED}Error: Please provide a name for the new feature${NC}"
+        echo "Usage: cody-switch new <name>"
+        exit 1
+    fi
+
+    if [ "$name" = "archived" ]; then
+        _is_json && _json_error "'archived' is a reserved name"
+        echo -e "${RED}Error: 'archived' is a reserved name${NC}" >&2
+        exit 1
+    fi
+
+    if [ -f "$(get_feature_dir "$name")/AGENTS.md" ]; then
+        _is_json && _json_error "Feature '${name}' already exists"
+        echo -e "${RED}Error: Feature '${name}' already exists${NC}"
+        exit 1
+    fi
+
+    if [ -f "$TRACKER_FILE" ]; then
+        local current=$(cat "$TRACKER_FILE")
+        if [ -n "$current" ]; then
+            _is_json && _json_error "Already tracking feature '${current}'"
+            echo -e "${RED}Error: Already tracking feature '${current}'${NC}"
+            echo "To create a new feature, use: cody-switch blank <name>"
+            exit 1
+        fi
+    fi
+
+    if [ ! -f "$CLAUDE_MD" ]; then
+        _is_json || echo -e "${YELLOW}No active AGENTS.md. Creating scaffold for '${name}'${NC}"
+        _create_claude_scaffold "$name" "$CLAUDE_MD"
+    fi
+
+    ensure_docs_folder "$name"
+    echo "$name" > "$TRACKER_FILE"
+
+    # Persist AGENTS.md and tasks to storage immediately
+    ensure_feature_dir "$name"
+    cp "$CLAUDE_MD" "$(get_feature_dir "$name")/AGENTS.md"
+    save_tasks "$name"
+
+    if _is_json; then
+        _json_emit "success" "@bool:true" "command" "new" "feature" "$name"
+        return
+    fi
+    echo -e "${GREEN}Created new feature context: ${name}${NC}"
+    echo "Current AGENTS.md is now tracked as '${name}'"
+}
+
+# Create a blank feature context
+create_blank() {
+    local name=""
+    local use_workflow=false
+    local use_branch=false
+    local use_worktree=false
+
+    # Parse arguments
+    for arg in "$@"; do
+        case "$arg" in
+            --workflow)  use_workflow=true ;;
+            --branch)    use_branch=true ;;
+            --worktree)  use_worktree=true ;;
+            --with=*|--with)
+                echo -e "${RED}Error: --with is not supported with 'blank'${NC}" >&2
+                echo "Create the feature first, then switch with --with:" >&2
+                echo "  cody-switch blank <name>" >&2
+                echo "  cody-switch <name> --with <ref>" >&2
+                exit 1
+                ;;
+            *)          name="$arg" ;;
+        esac
+    done
+
+    if [ -z "$name" ]; then
+        _is_json && _json_error "Please provide a name for the new feature"
+        echo -e "${RED}Error: Please provide a name for the new feature${NC}"
+        echo "Usage: cody-switch blank <name> [--workflow] [--branch] [--worktree]"
+        exit 1
+    fi
+
+    if [ "$name" = "archived" ]; then
+        _is_json && _json_error "'archived' is a reserved name"
+        echo -e "${RED}Error: 'archived' is a reserved name${NC}" >&2
+        exit 1
+    fi
+
+    # --worktree and --branch are mutually exclusive
+    if [ "$use_worktree" = true ] && [ "$use_branch" = true ]; then
+        _is_json && _json_error "--worktree and --branch are mutually exclusive (worktree creates its own branch)"
+        echo -e "${RED}Error: --worktree and --branch are mutually exclusive${NC}" >&2
+        echo "Worktree creates its own branch (worktree-<name>) automatically." >&2
+        exit 1
+    fi
+
+    if [ -f "$(get_feature_dir "$name")/AGENTS.md" ]; then
+        _is_json && _json_error "Feature '${name}' already exists"
+        echo -e "${RED}Error: Feature '${name}' already exists${NC}"
+        exit 1
+    fi
+
+    # Validate name for git branch compatibility when using worktree
+    if [ "$use_worktree" = true ]; then
+        _validate_worktree_name "$name"
+    fi
+
+    ensure_feature_dir "$name"
+    local feature_file="$(get_feature_dir "$name")/AGENTS.md"
+    local branch_created=false
+    local worktree_path=""
+
+    # Seed with workflow template if --workflow flag is passed, otherwise minimal scaffold
+    if [ "$use_workflow" = true ]; then
+        if [ -f "$WORKFLOW_TEMPLATE" ]; then
+            python3 -c "import sys; print(sys.stdin.read().replace('{feature-name}', sys.argv[1]), end='')" "$name" < "$WORKFLOW_TEMPLATE" > "$feature_file"
+            _is_json || echo -e "${GREEN}Created feature context '${name}' (from workflow.md)${NC}"
+        else
+            _create_claude_scaffold "$name" "$feature_file"
+            _is_json || echo -e "${GREEN}Created feature context: ${name} (minimal scaffold)${NC}"
+            _is_json || echo -e "${YELLOW}Warning: workflow.md template not found at ${WORKFLOW_TEMPLATE}${NC}"
+        fi
+    else
+        _create_claude_scaffold "$name" "$feature_file"
+        _is_json || echo -e "${GREEN}Created feature context: ${name}${NC}"
+    fi
+    ensure_docs_folder "$name"
+
+    # Create git worktree if --worktree flag is passed
+    if [ "$use_worktree" = true ]; then
+        create_worktree "$name"
+        deploy_to_worktree "$name"
+        worktree_path="$WORKTREES_DIR/$name"
+        _is_json || echo -e "${GREEN}Created worktree at: ${CYAN}${worktree_path}${NC}"
+        _is_json || echo -e "${GREEN}Branch: ${CYAN}worktree-${name}${NC}"
+    fi
+
+    # Create and checkout new branch if --branch flag is passed
+    if [ "$use_branch" = true ]; then
+        if git rev-parse --verify "$name" >/dev/null 2>&1; then
+            _is_json || echo -e "${YELLOW}Branch '${name}' already exists, checking out${NC}"
+            git checkout "$name"
+        else
+            git checkout -b "$name"
+            branch_created=true
+            _is_json || echo -e "${GREEN}Created and switched to branch '${name}'${NC}"
+        fi
+    fi
+
+    if _is_json; then
+        local has_worktree=false
+        [ "$use_worktree" = true ] && has_worktree=true
+        _json_emit "success" "@bool:true" "command" "blank" "feature" "$name" \
+            "workflow" "@bool:$use_workflow" "branch_created" "@bool:$branch_created" \
+            "has_worktree" "@bool:$has_worktree" "worktree_path" "$worktree_path"
+        return
+    fi
+
+    echo ""
+
+    if [ "$use_worktree" = true ]; then
+        # Worktree features: print path instead of switch prompt
+        echo -e "${YELLOW}To start working in the worktree:${NC}"
+        echo -e "  ${CYAN}cd ${worktree_path} && claude${NC}"
+    else
+        # Ask if they want to switch
+        echo -e "${YELLOW}Switch to '${name}' now?${NC} [y/N] "
+        read -r response
+
+        if [[ "$response" =~ ^[Yy]$ ]]; then
+            switch_to "$name"
+        else
+            echo ""
+            echo -e "To switch later, run: ${CYAN}cody-switch ${name}${NC}"
+        fi
+    fi
+}
+
+# Fork a feature: copy AGENTS.md (always), tasks and docs (optionally) from a source
+fork_feature() {
+    local source=""
+    local name=""
+    local without_docs=false
+    local without_tasks=false
+    local use_branch=false
+    local use_worktree=false
+
+    # Parse arguments
+    for arg in "$@"; do
+        case "$arg" in
+            --without-docs)  without_docs=true ;;
+            --without-tasks) without_tasks=true ;;
+            --branch)        use_branch=true ;;
+            --worktree)      use_worktree=true ;;
+            *)
+                if [ -z "$source" ]; then
+                    source="$arg"
+                elif [ -z "$name" ]; then
+                    name="$arg"
+                fi
+                ;;
+        esac
+    done
+
+    if [ -z "$source" ] || [ -z "$name" ]; then
+        _is_json && _json_error "Both source and new name are required"
+        echo -e "${RED}Error: Both source and new name are required${NC}" >&2
+        echo "Usage: cody-switch fork <source> <new-name> [--without-docs] [--without-tasks] [--branch] [--worktree]" >&2
+        exit 1
+    fi
+
+    if [ "$name" = "archived" ]; then
+        _is_json && _json_error "'archived' is a reserved name"
+        echo -e "${RED}Error: 'archived' is a reserved name${NC}" >&2
+        exit 1
+    fi
+
+    # --worktree and --branch are mutually exclusive
+    if [ "$use_worktree" = true ] && [ "$use_branch" = true ]; then
+        _is_json && _json_error "--worktree and --branch are mutually exclusive (worktree creates its own branch)"
+        echo -e "${RED}Error: --worktree and --branch are mutually exclusive${NC}" >&2
+        echo "Worktree creates its own branch (worktree-<name>) automatically." >&2
+        exit 1
+    fi
+
+    if [ -f "$(get_feature_dir "$name")/AGENTS.md" ]; then
+        _is_json && _json_error "Feature '${name}' already exists"
+        echo -e "${RED}Error: Feature '${name}' already exists${NC}" >&2
+        exit 1
+    fi
+
+    # Validate name for git branch compatibility when using worktree
+    if [ "$use_worktree" = true ]; then
+        _validate_worktree_name "$name"
+    fi
+
+    # Sync source worktree before forking to get latest content
+    if is_worktree_feature "$source"; then
+        sync_from_worktree "$source"
+    fi
+
+    # Resolve source location
+    local source_claude=""
+    local source_tasks=""
+    local source_docs=""
+    local current
+    current="$(get_current)"
+
+    if [ "$source" = "$current" ]; then
+        # Active feature: AGENTS.md and tasks/ at project root
+        source_claude="$CLAUDE_MD"
+        [ -d "$TASKS_DIR" ] && source_tasks="$TASKS_DIR"
+        [ -d "$DOCS_DIR/$source" ] && source_docs="$DOCS_DIR/$source"
+    elif [ -f "$(get_feature_dir "$source")/AGENTS.md" ]; then
+        # Stored feature
+        source_claude="$(get_feature_dir "$source")/AGENTS.md"
+        [ -d "$(get_feature_dir "$source")/tasks" ] && source_tasks="$(get_feature_dir "$source")/tasks"
+        [ -d "$DOCS_DIR/$source" ] && source_docs="$DOCS_DIR/$source"
+    elif [ -f "$(get_archived_feature_dir "$source")/AGENTS.md" ]; then
+        # Archived feature
+        source_claude="$(get_archived_feature_dir "$source")/AGENTS.md"
+        [ -d "$(get_archived_feature_dir "$source")/tasks" ] && source_tasks="$(get_archived_feature_dir "$source")/tasks"
+        local archived_docs="$DOCS_DIR/archived/$source"
+        [ -d "$archived_docs" ] && source_docs="$archived_docs"
+    else
+        _is_json && _json_error "Source feature '${source}' not found"
+        echo -e "${RED}Error: Source feature '${source}' not found${NC}" >&2
+        exit 1
+    fi
+
+    # Create new feature
+    ensure_feature_dir "$name"
+    local new_dir
+    new_dir="$(get_feature_dir "$name")"
+
+    # Always copy AGENTS.md
+    cp "$source_claude" "$new_dir/AGENTS.md"
+
+    # Tasks
+    if [ "$without_tasks" = true ] || [ -z "$source_tasks" ]; then
+        create_fresh_tasks "$new_dir/tasks"
+    else
+        cp -r "$source_tasks" "$new_dir/tasks"
+    fi
+
+    # Docs
+    if [ "$without_docs" = true ] || [ -z "$source_docs" ]; then
+        ensure_docs_folder "$name"
+    else
+        cp -r "$source_docs" "$DOCS_DIR/$name"
+    fi
+
+    local branch_created=false
+    local worktree_path=""
+    _is_json || echo -e "${GREEN}Forked '${source}' → '${name}'${NC}"
+
+    # Create git worktree if --worktree flag is passed
+    if [ "$use_worktree" = true ]; then
+        create_worktree "$name"
+        deploy_to_worktree "$name"
+        worktree_path="$WORKTREES_DIR/$name"
+        _is_json || echo -e "${GREEN}Created worktree at: ${CYAN}${worktree_path}${NC}"
+        _is_json || echo -e "${GREEN}Branch: ${CYAN}worktree-${name}${NC}"
+    fi
+
+    # Create and checkout new branch if --branch flag is passed
+    if [ "$use_branch" = true ]; then
+        if git rev-parse --verify "$name" >/dev/null 2>&1; then
+            _is_json || echo -e "${YELLOW}Branch '${name}' already exists, checking out${NC}"
+            git checkout "$name"
+        else
+            git checkout -b "$name"
+            branch_created=true
+            _is_json || echo -e "${GREEN}Created and switched to branch '${name}'${NC}"
+        fi
+    fi
+
+    local copied_tasks=true
+    [ "$without_tasks" = true ] && copied_tasks=false
+    [ -z "$source_tasks" ] && copied_tasks=false
+    local copied_docs=true
+    [ "$without_docs" = true ] && copied_docs=false
+    [ -z "$source_docs" ] && copied_docs=false
+
+    if _is_json; then
+        local has_worktree=false
+        [ "$use_worktree" = true ] && has_worktree=true
+        _json_emit "success" "@bool:true" "command" "fork" \
+            "source" "$source" "feature" "$name" \
+            "branch_created" "@bool:$branch_created" \
+            "has_worktree" "@bool:$has_worktree" "worktree_path" "$worktree_path" \
+            "copied" "@json:{\"claude_md\":true,\"tasks\":$copied_tasks,\"docs\":$copied_docs}"
+        return
+    fi
+
+    echo ""
+
+    if [ "$use_worktree" = true ]; then
+        # Worktree features: print path instead of switch prompt
+        echo -e "${YELLOW}To start working in the worktree:${NC}"
+        echo -e "  ${CYAN}cd ${worktree_path} && claude${NC}"
+    else
+        # Ask if they want to switch
+        echo -e "${YELLOW}Switch to '${name}' now?${NC} [y/N] "
+        read -r response
+
+        if [[ "$response" =~ ^[Yy]$ ]]; then
+            switch_to "$name"
+        else
+            echo ""
+            echo -e "To switch later, run: ${CYAN}cody-switch ${name}${NC}"
+        fi
+    fi
+}
+
+# Archive a feature
+archive_feature() {
+    local name="$1"
+
+    if [ -z "$name" ]; then
+        _is_json && _json_error "Please provide a feature name to archive"
+        echo -e "${RED}Error: Please provide a feature name to archive${NC}" >&2
+        echo "Usage: cody-switch archive <name>" >&2
+        exit 1
+    fi
+
+    # Block if feature is currently active
+    local current=$(get_current)
+    if [ "$current" = "$name" ]; then
+        _is_json && _json_error "Cannot archive the active feature '${name}'"
+        echo -e "${RED}Error: Cannot archive the active feature '${name}'${NC}" >&2
+        echo "Switch to another feature first." >&2
+        exit 1
+    fi
+
+    local fdir="$(get_feature_dir "$name")"
+    if [ ! -d "$fdir" ]; then
+        _is_json && _json_error "Feature '${name}' not found"
+        echo -e "${RED}Error: Feature '${name}' not found${NC}" >&2
+        exit 1
+    fi
+
+    # Clean up worktree if this is a worktree-backed feature
+    if is_worktree_feature "$name"; then
+        _is_json || echo -e "${BLUE}Syncing and removing worktree for '${name}'...${NC}"
+        remove_worktree "$name"
+    fi
+
+    # Move entire feature dir to archived/
+    mkdir -p "$FEATURES_DIR/archived"
+    mv "$fdir" "$(get_archived_feature_dir "$name")"
+
+    # Move docs folder
+    if [ -d "$DOCS_DIR/$name" ]; then
+        mkdir -p "$DOCS_DIR/archived"
+        mv "$DOCS_DIR/$name" "$DOCS_DIR/archived/$name"
+    fi
+
+    if _is_json; then
+        _json_emit "success" "@bool:true" "command" "archive" "feature" "$name"
+        return
+    fi
+    echo -e "${GREEN}Archived feature '${name}'${NC}"
+}
+
+# Unarchive a feature
+unarchive_feature() {
+    local name="$1"
+
+    if [ -z "$name" ]; then
+        _is_json && _json_error "Please provide a feature name to unarchive"
+        echo -e "${RED}Error: Please provide a feature name to unarchive${NC}" >&2
+        echo "Usage: cody-switch unarchive <name>" >&2
+        exit 1
+    fi
+
+    local afdir="$(get_archived_feature_dir "$name")"
+    if [ ! -d "$afdir" ]; then
+        _is_json && _json_error "Archived feature '${name}' not found"
+        echo -e "${RED}Error: Archived feature '${name}' not found${NC}" >&2
+        exit 1
+    fi
+
+    # Block if an active (non-archived) feature with the same name exists
+    if [ -d "$(get_feature_dir "$name")" ]; then
+        _is_json && _json_error "A feature named '${name}' already exists"
+        echo -e "${RED}Error: A feature named '${name}' already exists${NC}" >&2
+        echo "Delete or rename the existing feature first." >&2
+        exit 1
+    fi
+
+    # Move entire feature dir back from archived/
+    mv "$afdir" "$(get_feature_dir "$name")"
+
+    # Remove stale worktree marker if present (worktree was removed during archive)
+    local restored_dir="$(get_feature_dir "$name")"
+    if [ -f "$restored_dir/worktree" ]; then
+        _is_json || echo -e "${YELLOW}Note: Removed stale worktree marker (worktree was cleaned up during archive)${NC}"
+        rm -f "$restored_dir/worktree"
+    fi
+
+    # Clean up archived dir if empty
+    rmdir "$FEATURES_DIR/archived" 2>/dev/null || true
+
+    # Move docs folder back
+    if [ -d "$DOCS_DIR/archived/$name" ]; then
+        mv "$DOCS_DIR/archived/$name" "$DOCS_DIR/$name"
+        rmdir "$DOCS_DIR/archived" 2>/dev/null || true
+    fi
+
+    if _is_json; then
+        _json_emit "success" "@bool:true" "command" "unarchive" "feature" "$name"
+        return
+    fi
+    echo -e "${GREEN}Unarchived feature '${name}'${NC}"
+}
+
+# Peek at a feature's AGENTS.md without switching
+peek_feature() {
+    local target="$1"
+
+    if [ -z "$target" ]; then
+        echo -e "${RED}Error: Please provide a feature name or number${NC}" >&2
+        echo "Usage: cody-switch peek <name|number>" >&2
+        exit 1
+    fi
+
+    # Resolve number to name
+    if [[ "$target" =~ ^[0-9]+$ ]]; then
+        local features=($(get_features))
+        local index=$(($target - 1))
+
+        if [ $index -lt 0 ] || [ $index -ge ${#features[@]} ]; then
+            echo -e "${RED}Error: Invalid number. Use 1-${#features[@]}${NC}" >&2
+            exit 1
+        fi
+
+        target="${features[$index]}"
+    fi
+
+    # Check if it's the active feature
+    local current=$(get_current)
+    if [ "$target" = "$current" ] && [ -f "$CLAUDE_MD" ]; then
+        if _is_json; then
+            _json_emit "success" "@bool:true" "command" "peek" "feature" "$target" \
+                "status" "active" "content" "$(cat "$CLAUDE_MD")"
+            return
+        fi
+        echo -e "${BOLD}=== ${target} (active) ===${NC}"
+        echo ""
+        cat "$CLAUDE_MD"
+        return
+    fi
+
+    # Check non-archived
+    local fdir="$(get_feature_dir "$target")"
+    if [ -d "$fdir" ]; then
+        if [ -f "$fdir/AGENTS.md" ]; then
+            if _is_json; then
+                _json_emit "success" "@bool:true" "command" "peek" "feature" "$target" \
+                    "status" "stored" "content" "$(cat "$fdir/AGENTS.md")"
+                return
+            fi
+            echo -e "${BOLD}=== ${target} ===${NC}"
+            echo ""
+            cat "$fdir/AGENTS.md"
+        else
+            if _is_json; then
+                _json_emit "success" "@bool:true" "command" "peek" "feature" "$target" \
+                    "status" "missing_claude_md" "content" ""
+                return
+            fi
+            echo -e "${BOLD}=== ${target} ===${NC}"
+            echo ""
+            echo -e "${RED}AGENTS.md is missing for this feature (data loss detected)${NC}"
+            echo -e "${YELLOW}Existing artifacts: $(ls "$fdir" | tr '\n' ', ')${NC}"
+            echo -e "${YELLOW}Run 'cody-switch doctor' for full diagnosis${NC}"
+        fi
+        return
+    fi
+
+    # Check archived
+    local afdir="$(get_archived_feature_dir "$target")"
+    if [ -d "$afdir" ]; then
+        if [ -f "$afdir/AGENTS.md" ]; then
+            if _is_json; then
+                _json_emit "success" "@bool:true" "command" "peek" "feature" "$target" \
+                    "status" "archived" "content" "$(cat "$afdir/AGENTS.md")"
+                return
+            fi
+            echo -e "${BOLD}=== ${target} (archived) ===${NC}"
+            echo ""
+            cat "$afdir/AGENTS.md"
+        else
+            if _is_json; then
+                _json_emit "success" "@bool:true" "command" "peek" "feature" "$target" \
+                    "status" "archived_missing_claude_md" "content" ""
+                return
+            fi
+            echo -e "${BOLD}=== ${target} (archived) ===${NC}"
+            echo ""
+            echo -e "${RED}AGENTS.md is missing for this archived feature (data loss detected)${NC}"
+        fi
+        return
+    fi
+
+    _is_json && _json_error "Feature '${target}' not found"
+    echo -e "${RED}Error: Feature '${target}' not found${NC}" >&2
+    exit 1
+}
+
+# Delete a feature and all its artifacts
+delete_feature() {
+    local name="$1"
+
+    if [ -z "$name" ]; then
+        _is_json && _json_error "Please provide a feature name to delete"
+        echo -e "${RED}Error: Please provide a feature name to delete${NC}" >&2
+        echo "Usage: cody-switch delete <name>" >&2
+        exit 1
+    fi
+
+    # Block if feature is currently active
+    local current=$(get_current)
+    if [ "$current" = "$name" ]; then
+        _is_json && _json_error "Cannot delete the active feature '${name}'"
+        echo -e "${RED}Error: Cannot delete the active feature '${name}'${NC}" >&2
+        echo "Switch to another feature first." >&2
+        exit 1
+    fi
+
+    # Check the feature exists (in any form)
+    local found=false
+    local to_delete=()
+
+    # Check for worktree
+    local has_worktree=false
+    local wt_path=""
+    if is_worktree_feature "$name"; then
+        has_worktree=true
+        wt_path="$(get_worktree_path "$name")"
+    fi
+
+    for f in \
+        "$(get_feature_dir "$name")" \
+        "$(get_archived_feature_dir "$name")" \
+        "$DOCS_DIR/${name}" \
+        "$DOCS_DIR/archived/${name}"; do
+        if [ -e "$f" ]; then
+            found=true
+            to_delete+=("$f")
+        fi
+    done
+
+    if [ "$found" = false ]; then
+        _is_json && _json_error "Feature '${name}' not found"
+        echo -e "${RED}Error: Feature '${name}' not found${NC}" >&2
+        exit 1
+    fi
+
+    # In JSON mode, auto-confirm
+    if ! _is_json; then
+        echo -e "${YELLOW}The following will be deleted:${NC}"
+        for f in "${to_delete[@]}"; do
+            echo -e "  ${RED}-${NC} ${f#$PROJECT_DIR/}"
+        done
+        if [ "$has_worktree" = true ] && [ -d "$wt_path" ]; then
+            echo -e "  ${RED}-${NC} ${wt_path#$PROJECT_DIR/} (worktree)"
+            echo -e "  ${RED}-${NC} branch worktree-${name}"
+        fi
+        echo ""
+        echo -en "${YELLOW}Delete '${name}'? This cannot be undone.${NC} [y/N] "
+        read -r response
+        if [[ ! "$response" =~ ^[Yy]$ ]]; then
+            echo "Aborted."
+            return
+        fi
+    fi
+
+    # Remove worktree first (syncs state, removes branch)
+    if [ "$has_worktree" = true ]; then
+        remove_worktree "$name" true
+    fi
+
+    for f in "${to_delete[@]}"; do
+        rm -rf "$f"
+    done
+
+    # Clean up empty archived dirs
+    rmdir "$DOCS_DIR/archived" 2>/dev/null || true
+    rmdir "$FEATURES_DIR/archived" 2>/dev/null || true
+
+    if _is_json; then
+        _json_emit "success" "@bool:true" "command" "delete" "feature" "$name"
+        return
+    fi
+    echo -e "${GREEN}Deleted feature '${name}'${NC}"
+}
+
+# Diagnose feature health: find missing/empty AGENTS.md, orphaned data
+doctor() {
+    local fix_mode=false
+    [ "$1" = "--fix" ] && fix_mode=true
+
+    local issues=0
+    local fixed=0
+    local current
+    current=$(get_current)
+
+    # JSON collection variables
+    local _json_features="["
+    local _json_first=true
+
+    if ! _is_json; then
+        if [ "$fix_mode" = true ]; then
+            echo -e "${BOLD}cody-switch doctor --fix — Fixing Feature Issues${NC}"
+        else
+            echo -e "${BOLD}cody-switch doctor — Feature Health Report${NC}"
+        fi
+        echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo ""
+    fi
+
+    # 1. Current active feature status
+    _is_json || echo -e "${BOLD}Active Feature${NC}"
+    _is_json || echo -e "  Tracker:    ${CYAN}${current}${NC}"
+    if [ -f "$CLAUDE_MD" ]; then
+        local md_size
+        md_size=$(wc -c < "$CLAUDE_MD" | tr -d ' ')
+        _is_json || echo -e "  Root AGENTS.md: ${GREEN}exists${NC} (${md_size} bytes)"
+        if git show HEAD:AGENTS.md >/dev/null 2>&1; then
+            if diff -q "$CLAUDE_MD" <(git show HEAD:AGENTS.md 2>/dev/null) >/dev/null 2>&1; then
+                _is_json || echo -e "  ${YELLOW}Note: Root AGENTS.md matches git HEAD — this is the repo file, NOT a feature file${NC}"
+                if [ "$current" != "(none)" ] && [ "$current" != "(active but untracked)" ]; then
+                    _is_json || echo -e "  ${RED}ISSUE: Feature '${current}' is tracked as active but root AGENTS.md is the repo version${NC}"
+                    _is_json || echo -e "  ${RED}       This means the feature's AGENTS.md was lost during a previous switch${NC}"
+                    issues=$((issues + 1))
+                fi
+            fi
+        fi
+    else
+        _is_json || echo -e "  Root AGENTS.md: ${RED}MISSING${NC}"
+        if [ "$current" != "(none)" ]; then
+            _is_json || echo -e "  ${RED}ISSUE: Feature '${current}' is active but has no AGENTS.md at project root${NC}"
+            issues=$((issues + 1))
+        fi
+    fi
+    _is_json || echo ""
+
+    # 2. Scan all feature folders
+    _is_json || echo -e "${BOLD}Feature Scan${NC}"
+    if [ ! -d "$FEATURES_DIR" ]; then
+        _is_json || echo -e "  ${YELLOW}No features directory found${NC}"
+        _is_json || echo ""
+    else
+        local total=0
+        local healthy=0
+        local missing_md=0
+        local empty_md=0
+        local orphaned_sessions=0
+        local orphaned_tasks=0
+
+        for d in "$FEATURES_DIR"/*/; do
+            [ -d "$d" ] || continue
+            local name="$(basename "$d")"
+            [ "$name" = "archived" ] && continue
+            total=$((total + 1))
+
+            local has_claude=false
+            local has_content=false
+            local has_session=false
+            local has_tasks=false
+
+            if [ -f "$d/AGENTS.md" ]; then
+                has_claude=true
+                [ -s "$d/AGENTS.md" ] && has_content=true
+            fi
+            if [ -f "$d/session" ] || [ -f "$d/session-latest" ]; then
+                has_session=true
+            fi
+            if [ -d "$d/tasks" ]; then
+                has_tasks=true
+            fi
+
+            # Skip the active feature (its AGENTS.md is at project root)
+            if [ "$name" = "$current" ]; then
+                if [ "$has_claude" = false ] && [ -f "$CLAUDE_MD" ]; then
+                    # Expected: active feature's AGENTS.md is at root
+                    healthy=$((healthy + 1))
+                    continue
+                elif [ "$has_claude" = true ]; then
+                    # AGENTS.md in both places — unusual but not broken
+                    healthy=$((healthy + 1))
+                    continue
+                fi
+            fi
+
+            local _feat_health="healthy"
+            local _feat_fixed=false
+
+            if [ "$has_claude" = true ] && [ "$has_content" = true ]; then
+                healthy=$((healthy + 1))
+            elif [ "$has_claude" = true ] && [ "$has_content" = false ]; then
+                empty_md=$((empty_md + 1))
+                _feat_health="empty_claude_md"
+                if [ "$fix_mode" = true ]; then
+                    _create_claude_scaffold "$name" "$d/AGENTS.md"
+                    _is_json || echo -e "  ${GREEN}Fixed:${NC} ${name} — created scaffold AGENTS.md (was 0 bytes)"
+                    fixed=$((fixed + 1))
+                    _feat_fixed=true
+                else
+                    _is_json || echo -e "  ${YELLOW}EMPTY${NC}   ${name} — AGENTS.md is 0 bytes"
+                    issues=$((issues + 1))
+                fi
+            elif [ "$has_claude" = false ]; then
+                missing_md=$((missing_md + 1))
+                _feat_health="missing_claude_md"
+                local artifacts=""
+                [ "$has_session" = true ] && artifacts="${artifacts}session, "
+                [ "$has_tasks" = true ] && artifacts="${artifacts}tasks, "
+                artifacts="${artifacts%,*}"
+                if [ "$fix_mode" = true ] && { [ "$has_session" = true ] || [ "$has_tasks" = true ]; }; then
+                    _create_claude_scaffold "$name" "$d/AGENTS.md"
+                    _is_json || echo -e "  ${GREEN}Fixed:${NC} ${name} — created scaffold AGENTS.md (had: ${artifacts})"
+                    fixed=$((fixed + 1))
+                    _feat_fixed=true
+                else
+                    _is_json || echo -e "  ${RED}LOST${NC}    ${name} — no AGENTS.md (has: ${artifacts})"
+                    issues=$((issues + 1))
+                fi
+                if [ "$has_session" = true ]; then
+                    orphaned_sessions=$((orphaned_sessions + 1))
+                fi
+                if [ "$has_tasks" = true ]; then
+                    orphaned_tasks=$((orphaned_tasks + 1))
+                fi
+            fi
+
+            # Collect for JSON
+            [ "$_json_first" = true ] && _json_first=false || _json_features+=","
+            _json_features+="{\"name\":\"$name\",\"health\":\"$_feat_health\",\"fixed\":$_feat_fixed}"
+        done
+
+        _is_json || echo ""
+        _is_json || echo -e "  ${BOLD}Summary:${NC} ${total} features total"
+        _is_json || echo -e "    ${GREEN}Healthy:${NC}         ${healthy}"
+        if [ "$missing_md" -gt 0 ]; then
+            _is_json || echo -e "    ${RED}Missing AGENTS.md:${NC} ${missing_md}"
+        fi
+        if [ "$empty_md" -gt 0 ]; then
+            _is_json || echo -e "    ${YELLOW}Empty AGENTS.md:${NC}   ${empty_md}"
+        fi
+        _is_json || echo ""
+    fi
+
+    # 3. Check for empty feature dirs (no artifacts at all)
+    local empty_dirs=0
+    if [ -d "$FEATURES_DIR" ]; then
+        for d in "$FEATURES_DIR"/*/; do
+            [ -d "$d" ] || continue
+            local name="$(basename "$d")"
+            [ "$name" = "archived" ] && continue
+            local contents
+            contents=$(ls -A "$d" 2>/dev/null)
+            if [ -z "$contents" ]; then
+                if ! _is_json && [ "$empty_dirs" -eq 0 ]; then
+                    echo -e "${BOLD}Empty Feature Dirs (no artifacts)${NC}"
+                fi
+                _is_json || echo -e "  ${YELLOW}${name}${NC} — completely empty directory"
+                empty_dirs=$((empty_dirs + 1))
+            fi
+        done
+        if [ "$empty_dirs" -gt 0 ]; then
+            _is_json || echo ""
+        fi
+    fi
+
+    # 4. Worktree health checks
+    local wt_orphans=0
+    local wt_stale=0
+    local wt_header_shown=false
+    if [ -d "$FEATURES_DIR" ]; then
+        for d in "$FEATURES_DIR"/*/; do
+            [ -d "$d" ] || continue
+            local name="$(basename "$d")"
+            [ "$name" = "archived" ] && continue
+            if [ -f "$d/worktree" ]; then
+                local wt_path
+                wt_path="$(cat "$d/worktree")"
+                if [ ! -d "$wt_path" ]; then
+                    wt_orphans=$((wt_orphans + 1))
+                    issues=$((issues + 1))
+                    if ! _is_json; then
+                        if [ "$wt_header_shown" = false ]; then
+                            echo -e "${BOLD}Worktree Health${NC}"
+                            wt_header_shown=true
+                        fi
+                        echo -e "  ${RED}ORPHAN${NC}  ${name} — worktree marker points to missing dir: ${wt_path}"
+                    fi
+                    if [ "$fix_mode" = true ]; then
+                        rm -f "$d/worktree"
+                        _is_json || echo -e "  ${GREEN}Fixed:${NC} removed orphaned worktree marker for '${name}'"
+                        fixed=$((fixed + 1))
+                    fi
+                fi
+            fi
+        done
+    fi
+    # Check for stale worktree dirs not tracked by any feature
+    if [ -d "$WORKTREES_DIR" ]; then
+        for wt_dir in "$WORKTREES_DIR"/*/; do
+            [ -d "$wt_dir" ] || continue
+            local wt_name="$(basename "$wt_dir")"
+            if [ ! -f "$FEATURES_DIR/$wt_name/worktree" ] && [ ! -f "$FEATURES_DIR/archived/$wt_name/worktree" ]; then
+                wt_stale=$((wt_stale + 1))
+                issues=$((issues + 1))
+                if ! _is_json; then
+                    if [ "$wt_header_shown" = false ]; then
+                        echo -e "${BOLD}Worktree Health${NC}"
+                        wt_header_shown=true
+                    fi
+                    echo -e "  ${YELLOW}STALE${NC}   ${wt_name} — worktree dir exists but no feature tracks it"
+                fi
+                if [ "$fix_mode" = true ]; then
+                    local branch_name="worktree-$wt_name"
+                    git worktree remove --force "$wt_dir" 2>/dev/null || rm -rf "$wt_dir"
+                    git branch -D "$branch_name" >/dev/null 2>&1 || true
+                    _is_json || echo -e "  ${GREEN}Fixed:${NC} removed stale worktree dir and branch for '${wt_name}'"
+                    fixed=$((fixed + 1))
+                fi
+            fi
+        done
+    fi
+    if [ "$wt_header_shown" = true ]; then
+        _is_json || echo ""
+    fi
+
+    _json_features+="]"
+
+    # JSON output
+    if _is_json; then
+        local _total=${total:-0}
+        local _healthy=${healthy:-0}
+        local _missing=${missing_md:-0}
+        local _empty=${empty_md:-0}
+        _json_emit "success" "@bool:true" "command" "doctor" \
+            "fix_mode" "@bool:$fix_mode" \
+            "features" "@json:$_json_features" \
+            "summary" "@json:{\"total\":$_total,\"healthy\":$_healthy,\"missing_md\":$_missing,\"empty_md\":$_empty,\"fixed\":$fixed,\"wt_orphans\":${wt_orphans:-0},\"wt_stale\":${wt_stale:-0}}" \
+            "issues" "@int:$issues"
+        return
+    fi
+
+    # 4. Final verdict
+    echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    if [ "$fix_mode" = true ]; then
+        if [ "$fixed" -gt 0 ]; then
+            echo -e "${GREEN}Fixed ${fixed} feature(s).${NC} Run ${CYAN}cody-switch doctor${NC} to verify."
+        elif [ "$issues" -eq 0 ]; then
+            echo -e "${GREEN}Nothing to fix — all features look healthy.${NC}"
+        else
+            echo -e "${YELLOW}${issues} issue(s) remain that could not be auto-fixed.${NC}"
+        fi
+    elif [ "$issues" -eq 0 ]; then
+        echo -e "${GREEN}All features look healthy.${NC}"
+    else
+        echo -e "${RED}${issues} issue(s) detected.${NC}"
+        echo ""
+        echo -e "${YELLOW}To auto-fix empty/missing AGENTS.md files:${NC}"
+        echo -e "  ${CYAN}cody-switch doctor --fix${NC}"
+        echo ""
+        echo -e "${YELLOW}Or manually:${NC}"
+        echo -e "  1. Switch to it: ${CYAN}cody-switch <name>${NC} (a scaffold will be created)"
+        echo -e "  2. Manually create the file: ${CYAN}echo '# Feature: <name>' > .codex/features/<name>/AGENTS.md${NC}"
+        echo -e "  3. Delete the orphaned feature: ${CYAN}cody-switch delete <name>${NC}"
+    fi
+}
+
+# =============================================================================
+# 12d. Project Bootstrap
+# =============================================================================
+
+# Detect tech stack from marker files at project root
+_detect_stack() {
+    if [ -f "$PROJECT_DIR/go.mod" ]; then
+        echo "go"
+    elif [ -f "$PROJECT_DIR/Cargo.toml" ]; then
+        echo "rust"
+    elif [ -f "$PROJECT_DIR/pyproject.toml" ] || [ -f "$PROJECT_DIR/setup.py" ] || [ -f "$PROJECT_DIR/requirements.txt" ]; then
+        echo "python"
+    elif [ -f "$PROJECT_DIR/package.json" ] && [ -f "$PROJECT_DIR/tsconfig.json" ]; then
+        echo "typescript"
+    elif [ -f "$PROJECT_DIR/package.json" ]; then
+        echo "node"
+    elif [ -f "$PROJECT_DIR/build.gradle" ] || [ -f "$PROJECT_DIR/pom.xml" ]; then
+        echo "java"
+    elif [ -f "$PROJECT_DIR/Gemfile" ]; then
+        echo "ruby"
+    elif [ -f "$PROJECT_DIR/composer.json" ]; then
+        echo "php"
+    elif [ -f "$PROJECT_DIR/CMakeLists.txt" ]; then
+        echo "c-cpp"
+    elif [ -f "$PROJECT_DIR/Makefile" ]; then
+        echo "make"
+    else
+        echo "generic"
+    fi
+}
+
+# Detect test framework from marker files
+_detect_test_framework() {
+    # JS/TS frameworks
+    if ls "$PROJECT_DIR"/jest.config.* 1>/dev/null 2>&1 || \
+       ([ -f "$PROJECT_DIR/package.json" ] && grep -q '"jest"' "$PROJECT_DIR/package.json" 2>/dev/null); then
+        echo "jest"
+    elif ls "$PROJECT_DIR"/vitest.config.* 1>/dev/null 2>&1 || \
+         ([ -f "$PROJECT_DIR/package.json" ] && grep -q '"vitest"' "$PROJECT_DIR/package.json" 2>/dev/null); then
+        echo "vitest"
+    # Python
+    elif [ -f "$PROJECT_DIR/conftest.py" ] || \
+         ([ -f "$PROJECT_DIR/pyproject.toml" ] && grep -q '\[tool\.pytest' "$PROJECT_DIR/pyproject.toml" 2>/dev/null); then
+        echo "pytest"
+    # Go (native)
+    elif [ -f "$PROJECT_DIR/go.mod" ]; then
+        echo "go-test"
+    # Bash
+    elif ls "$PROJECT_DIR"/test/*.bats 1>/dev/null 2>&1; then
+        echo "bats"
+    # Ruby
+    elif [ -f "$PROJECT_DIR/.rspec" ] || [ -d "$PROJECT_DIR/spec" ]; then
+        echo "rspec"
+    # PHP
+    elif [ -f "$PROJECT_DIR/phpunit.xml" ]; then
+        echo "phpunit"
+    # Rust (native)
+    elif [ -f "$PROJECT_DIR/Cargo.toml" ]; then
+        echo "cargo-test"
+    else
+        echo "none"
+    fi
+}
+
+# Detect build tool / package manager
+_detect_build_tool() {
+    local stack="$1"
+    case "$stack" in
+        node|typescript)
+            if [ -f "$PROJECT_DIR/pnpm-lock.yaml" ]; then echo "pnpm"
+            elif [ -f "$PROJECT_DIR/yarn.lock" ]; then echo "yarn"
+            else echo "npm"
+            fi
+            ;;
+        python)
+            if [ -f "$PROJECT_DIR/uv.lock" ]; then echo "uv"
+            elif [ -f "$PROJECT_DIR/poetry.lock" ]; then echo "poetry"
+            elif [ -f "$PROJECT_DIR/Pipfile" ]; then echo "pipenv"
+            else echo "pip"
+            fi
+            ;;
+        go)         echo "go build" ;;
+        rust)       echo "cargo" ;;
+        java)
+            if [ -f "$PROJECT_DIR/build.gradle" ]; then echo "gradle"
+            else echo "maven"
+            fi
+            ;;
+        ruby)       echo "bundler" ;;
+        php)        echo "composer" ;;
+        c-cpp)      echo "cmake" ;;
+        make)       echo "make" ;;
+        *)          echo "—" ;;
+    esac
+}
+
+# Generate testing section for AGENTS.md based on detected framework
+_testing_section() {
+    local framework="$1"
+    case "$framework" in
+        jest)
+            cat << 'EOF'
+Run `npm test`. Tests in `__tests__/` or `*.test.{ts,js}`. Prefer `describe`/`it` blocks.
+EOF
+            ;;
+        vitest)
+            cat << 'EOF'
+Run `npx vitest`. Tests in `__tests__/` or `*.test.{ts,js}`. Uses vitest runner.
+EOF
+            ;;
+        pytest)
+            cat << 'EOF'
+Run `pytest`. Tests in `tests/`. Use fixtures over setUp.
+EOF
+            ;;
+        go-test)
+            cat << 'EOF'
+Run `go test ./...`. Tests in `*_test.go`. Table-driven tests preferred.
+EOF
+            ;;
+        bats)
+            cat << 'EOF'
+Run `bats test/`. Shellcheck must pass.
+EOF
+            ;;
+        rspec)
+            cat << 'EOF'
+Run `bundle exec rspec`. Tests in `spec/`.
+EOF
+            ;;
+        phpunit)
+            cat << 'EOF'
+Run `./vendor/bin/phpunit`. Tests in `tests/`.
+EOF
+            ;;
+        cargo-test)
+            cat << 'EOF'
+Run `cargo test`. Tests annotated with `#[test]`.
+EOF
+            ;;
+        *)
+            cat << 'EOF'
+<!-- Add testing instructions: framework, run command, conventions -->
+EOF
+            ;;
+    esac
+}
+
+# Append missing cody-switch entries to .gitignore
+_init_gitignore() {
+    local gitignore="$PROJECT_DIR/.gitignore"
+    local entries=(".codex-current-feature" ".codex-last-seen-feature" ".codex-with-refs" "tasks/" ".codex/worktrees/" "AGENTS.md" ".codex/batch/")
+    local missing=()
+
+    for entry in "${entries[@]}"; do
+        if [ ! -f "$gitignore" ] || ! grep -qxF "$entry" "$gitignore" 2>/dev/null; then
+            missing+=("$entry")
+        fi
+    done
+
+    if [ ${#missing[@]} -eq 0 ]; then
+        _is_json || echo -e "  ${GREEN}.gitignore${NC}             already has cody-switch entries"
+        return 0
+    fi
+
+    # Ensure trailing newline before appending
+    if [ -f "$gitignore" ] && [ -s "$gitignore" ]; then
+        # Add newline if file doesn't end with one
+        if [ "$(tail -c1 "$gitignore" | wc -l)" -eq 0 ]; then
+            echo "" >> "$gitignore"
+        fi
+        echo "" >> "$gitignore"
+    fi
+
+    echo "# cody-switch" >> "$gitignore"
+    for entry in "${missing[@]}"; do
+        echo "$entry" >> "$gitignore"
+    done
+    _is_json || echo -e "  ${GREEN}.gitignore${NC}             ${#missing[@]} entries added"
+}
+
+# Pretty-print stack name for display
+_stack_display_name() {
+    case "$1" in
+        node)       echo "Node.js" ;;
+        typescript) echo "TypeScript" ;;
+        python)     echo "Python" ;;
+        go)         echo "Go" ;;
+        rust)       echo "Rust" ;;
+        java)       echo "Java" ;;
+        ruby)       echo "Ruby" ;;
+        php)        echo "PHP" ;;
+        c-cpp)      echo "C/C++" ;;
+        make)       echo "Make" ;;
+        generic)    echo "Generic" ;;
+        *)          echo "$1" ;;
+    esac
+}
+
+# Initialize a project for AI-assisted development
+init_project() {
+    local template=""
+    local force=false
+    local prev_arg=""
+
+    for arg in "$@"; do
+        case "$arg" in
+            --template=*) template="${arg#--template=}" ;;
+            --template)   ;;
+            --force)      force=true ;;
+            *)
+                if [ "$prev_arg" = "--template" ]; then
+                    template="$arg"
+                else
+                    _is_json && _json_error "Unknown argument: $arg"
+                    echo -e "${RED}Error: Unknown argument: $arg${NC}" >&2
+                    echo "Usage: cody-switch init [--template <t>] [--force]" >&2
+                    exit 1
+                fi
+                ;;
+        esac
+        prev_arg="$arg"
+    done
+
+    # Validate --template value if given
+    local valid_templates="node typescript python go rust java ruby php c-cpp make generic"
+    if [ -n "$template" ]; then
+        local found=false
+        for t in $valid_templates; do
+            if [ "$template" = "$t" ]; then found=true; break; fi
+        done
+        if [ "$found" = false ]; then
+            _is_json && _json_error "Unknown template '$template'"
+            echo -e "${RED}Error: Unknown template '$template'${NC}" >&2
+            echo -e "Valid templates: ${CYAN}${valid_templates}${NC}" >&2
+            exit 1
+        fi
+    fi
+
+    # Guard: already initialized?
+    if [ -d "$FEATURES_DIR" ] && [ "$force" = false ]; then
+        local count=0
+        for d in "$FEATURES_DIR"/*/; do
+            [ -d "$d" ] || continue
+            local name
+            name="$(basename "$d")"
+            [ "$name" = "archived" ] && continue
+            count=$((count + 1))
+        done
+        if [ "$count" -gt 0 ]; then
+            if _is_json; then
+                _json_emit "success" "@bool:false" "error" "Project already initialized ($count features)"
+                return 0
+            fi
+            echo -e "${YELLOW}Project already initialized${NC} ($count features in .codex/features/)"
+            echo -e "Use ${CYAN}--force${NC} to reinitialize"
+            return 0
+        fi
+    fi
+
+    # Guard: existing AGENTS.md?
+    if [ -f "$CLAUDE_MD" ] && [ "$force" = false ]; then
+        if _is_json; then
+            _json_emit "success" "@bool:false" "error" "AGENTS.md already exists at project root"
+            return 0
+        fi
+        echo -e "${YELLOW}AGENTS.md already exists at project root${NC}"
+        echo -e "Use ${CYAN}--force${NC} to reinitialize (existing AGENTS.md will be backed up)"
+        return 0
+    fi
+
+    # Backup existing AGENTS.md if --force
+    if [ -f "$CLAUDE_MD" ] && [ "$force" = true ]; then
+        local backup="$CLAUDE_MD.backup.$(date +%Y%m%d%H%M%S)"
+        cp "$CLAUDE_MD" "$backup"
+        _is_json || echo -e "  ${YELLOW}Backed up${NC} AGENTS.md → $(basename "$backup")"
+    fi
+
+    # Detect or use template
+    local stack
+    if [ -n "$template" ]; then
+        stack="$template"
+    else
+        stack="$(_detect_stack)"
+    fi
+    local test_fw
+    test_fw="$(_detect_test_framework)"
+    local build_tool
+    build_tool="$(_detect_build_tool "$stack")"
+    local project_name
+    project_name="$(basename "$PROJECT_DIR")"
+
+    # Create .codex/features/
+    mkdir -p "$FEATURES_DIR"
+
+    # Generate AGENTS.md
+    local testing_content
+    testing_content="$(_testing_section "$test_fw")"
+
+    cat > "$CLAUDE_MD" << INITEOF
+# Project: ${project_name}
+
+## Tech Stack
+
+- **Language:** $(_stack_display_name "$stack")
+- **Build:** ${build_tool}
+
+## Testing
+
+${testing_content}
+
+## Key Files
+
+<!-- Add important files and their purposes here -->
+
+## Conventions
+
+<!-- Add project-specific conventions here -->
+INITEOF
+
+    # .gitignore
+    _init_gitignore
+
+    if _is_json; then
+        _json_emit "success" "@bool:true" "command" "init" \
+            "project" "$project_name" \
+            "stack" "$stack" \
+            "test_framework" "$test_fw" \
+            "build_tool" "$build_tool"
+        return
+    fi
+
+    # Summary
+    echo ""
+    echo -e "${GREEN}${BOLD}Project initialized!${NC}"
+    echo ""
+    echo -e "  ${CYAN}Project:${NC}    ${project_name}"
+    echo -e "  ${CYAN}Stack:${NC}      $(_stack_display_name "$stack")"
+    if [ "$test_fw" != "none" ]; then
+        echo -e "  ${CYAN}Testing:${NC}    ${test_fw}"
+    fi
+    echo ""
+    echo -e "  ${BOLD}Created:${NC}"
+    echo -e "  ${GREEN}.codex/features/${NC}    feature storage"
+    echo -e "  ${GREEN}AGENTS.md${NC}             project context"
+
+    echo ""
+    echo -e "  ${BOLD}Next steps:${NC}"
+    echo -e "  1. Edit ${CYAN}AGENTS.md${NC} with project-specific context"
+    echo -e "  2. Start your first feature:"
+    echo -e "     ${CYAN}cody-switch blank <feature-name>${NC}"
+}
+
+# Append content from one task file to another with a separator
+_merge_task_file() {
+    local src_file="$1"
+    local dst_file="$2"
+    local label="$3"
+
+    # Nothing to merge if source doesn't exist or is empty
+    [ -f "$src_file" ] && [ -s "$src_file" ] || return 0
+
+    if [ -f "$dst_file" ] && [ -s "$dst_file" ]; then
+        # Both exist: append with separator
+        printf '\n\n---\n<!-- Merged from: %s -->\n\n' "$label" >> "$dst_file"
+        cat "$src_file" >> "$dst_file"
+    else
+        # Target missing or empty: just copy
+        mkdir -p "$(dirname "$dst_file")"
+        cp "$src_file" "$dst_file"
+    fi
+}
+
+# Merge one feature into another
+merge_feature() {
+    local source=""
+    local target=""
+    local delete_source=false
+    local parsing_target=false
+
+    # Parse args
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            into)
+                parsing_target=true
+                ;;
+            --delete)
+                delete_source=true
+                ;;
+            *)
+                if [ "$parsing_target" = true ]; then
+                    target="$1"
+                    parsing_target=false
+                elif [ -z "$source" ]; then
+                    source="$1"
+                fi
+                ;;
+        esac
+        shift
+    done
+
+    if [ -z "$source" ]; then
+        _is_json && _json_error "Please provide a source feature to merge"
+        echo -e "${RED}Error: Please provide a source feature to merge${NC}" >&2
+        echo "Usage: cody-switch merge <source> [into <target>] [--delete]" >&2
+        exit 1
+    fi
+
+    if [ "$source" = "archived" ]; then
+        _is_json && _json_error "'archived' is a reserved name"
+        echo -e "${RED}Error: 'archived' is a reserved name${NC}" >&2
+        exit 1
+    fi
+
+    # Default target to current active feature
+    local current
+    current=$(get_current)
+    if [ -z "$target" ]; then
+        if [ "$current" = "(none)" ] || [ "$current" = "(active but untracked)" ]; then
+            _is_json && _json_error "No active feature. Specify a target with 'into <target>'"
+            echo -e "${RED}Error: No active feature. Specify a target with 'into <target>'${NC}" >&2
+            exit 1
+        fi
+        target="$current"
+    fi
+
+    if [ "$target" = "archived" ]; then
+        _is_json && _json_error "'archived' is a reserved name"
+        echo -e "${RED}Error: 'archived' is a reserved name${NC}" >&2
+        exit 1
+    fi
+
+    # Block: source = target
+    if [ "$source" = "$target" ]; then
+        _is_json && _json_error "Cannot merge a feature into itself"
+        echo -e "${RED}Error: Cannot merge a feature into itself${NC}" >&2
+        exit 1
+    fi
+
+    # Block: source is active
+    if [ "$current" = "$source" ]; then
+        _is_json && _json_error "Cannot merge the active feature '${source}'"
+        echo -e "${RED}Error: Cannot merge the active feature '${source}'${NC}" >&2
+        echo "Switch to another feature first." >&2
+        exit 1
+    fi
+
+    # Resolve source dir (stored or archived)
+    local source_dir=""
+    local source_archived=false
+    if [ -d "$(get_feature_dir "$source")" ]; then
+        source_dir="$(get_feature_dir "$source")"
+    elif [ -d "$(get_archived_feature_dir "$source")" ]; then
+        source_dir="$(get_archived_feature_dir "$source")"
+        source_archived=true
+    else
+        _is_json && _json_error "Feature '${source}' not found"
+        echo -e "${RED}Error: Feature '${source}' not found${NC}" >&2
+        exit 1
+    fi
+
+    # Sync worktree state before merging (get latest content)
+    if is_worktree_feature "$source"; then
+        sync_from_worktree "$source"
+    fi
+
+    # Resolve target dir and check it's not archived
+    local target_dir=""
+    local target_is_active=false
+    if [ "$target" = "$current" ]; then
+        target_is_active=true
+    elif [ -d "$(get_feature_dir "$target")" ]; then
+        target_dir="$(get_feature_dir "$target")"
+    elif [ -d "$(get_archived_feature_dir "$target")" ]; then
+        _is_json && _json_error "Target '${target}' is archived. Unarchive it first."
+        echo -e "${RED}Error: Target '${target}' is archived. Unarchive it first.${NC}" >&2
+        exit 1
+    else
+        _is_json && _json_error "Target feature '${target}' not found"
+        echo -e "${RED}Error: Target feature '${target}' not found${NC}" >&2
+        exit 1
+    fi
+
+    # Sync target worktree state before merging
+    if [ "$target_is_active" = false ] && is_worktree_feature "$target"; then
+        sync_from_worktree "$target"
+    fi
+
+    # Check uncommitted changes if target is active
+    if [ "$target_is_active" = true ]; then
+        if ! check_uncommitted; then
+            _is_json && _json_error "Uncommitted changes detected. Commit or stash them first."
+            echo -e "${RED}Error: You have uncommitted changes. Commit or stash them first.${NC}" >&2
+            exit 1
+        fi
+    fi
+
+    # --- Build preview ---
+    if ! _is_json; then
+        echo -e "${BOLD}Merge Preview${NC}"
+        echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "  Source: ${CYAN}${source}${NC}$([ "$source_archived" = true ] && echo " (archived)")"
+        echo -e "  Target: ${GREEN}${target}${NC}$([ "$target_is_active" = true ] && echo " (active)")"
+        echo ""
+    fi
+
+    # AGENTS.md
+    local source_md="$source_dir/AGENTS.md"
+    if [ "$target_is_active" = true ]; then
+        local target_md="$CLAUDE_MD"
+    else
+        local target_md="$target_dir/AGENTS.md"
+    fi
+
+    if [ -f "$source_md" ] && [ -s "$source_md" ]; then
+        local src_lines
+        src_lines=$(wc -l < "$source_md" | tr -d ' ')
+        _is_json || echo -e "  ${BLUE}AGENTS.md:${NC} ${src_lines} lines will be appended"
+    else
+        _is_json || echo -e "  ${YELLOW}AGENTS.md:${NC} (empty or missing — nothing to merge)"
+    fi
+
+    # Tasks
+    local source_tasks="$source_dir/tasks"
+    if [ "$target_is_active" = true ]; then
+        local target_tasks="$TASKS_DIR"
+    else
+        local target_tasks="$target_dir/tasks"
+    fi
+
+    local task_items=()
+    for tf in todo.md lessons.md; do
+        if [ -f "$source_tasks/$tf" ] && [ -s "$source_tasks/$tf" ]; then
+            local tf_lines
+            tf_lines=$(wc -l < "$source_tasks/$tf" | tr -d ' ')
+            task_items+=("$tf (${tf_lines} lines)")
+        fi
+    done
+    if [ ${#task_items[@]} -gt 0 ]; then
+        _is_json || echo -e "  ${BLUE}Tasks:${NC} $(IFS=', '; echo "${task_items[*]}")"
+    else
+        _is_json || echo -e "  ${YELLOW}Tasks:${NC} (nothing to merge)"
+    fi
+
+    # Docs
+    local source_docs=""
+    if [ -d "$DOCS_DIR/$source" ]; then
+        source_docs="$DOCS_DIR/$source"
+    elif [ -d "$DOCS_DIR/archived/$source" ]; then
+        source_docs="$DOCS_DIR/archived/$source"
+    fi
+
+    local target_docs="$DOCS_DIR/$target"
+    local doc_copy=()
+    local doc_skip=()
+
+    if [ -n "$source_docs" ] && [ -d "$source_docs" ]; then
+        for f in "$source_docs"/*; do
+            [ -e "$f" ] || continue
+            local fname="$(basename "$f")"
+            if [ -e "$target_docs/$fname" ]; then
+                doc_skip+=("$fname")
+            else
+                doc_copy+=("$fname")
+            fi
+        done
+    fi
+
+    if ! _is_json; then
+        if [ ${#doc_copy[@]} -gt 0 ]; then
+            echo -e "  ${BLUE}Docs:${NC} ${#doc_copy[@]} file(s) will be copied"
+        fi
+        if [ ${#doc_skip[@]} -gt 0 ]; then
+            echo -e "  ${YELLOW}Docs conflicts:${NC} ${#doc_skip[@]} file(s) skipped (already exist in target)"
+            for f in "${doc_skip[@]}"; do
+                echo -e "    ${YELLOW}⚠${NC} $f"
+            done
+        fi
+        if [ ${#doc_copy[@]} -eq 0 ] && [ ${#doc_skip[@]} -eq 0 ]; then
+            echo -e "  ${YELLOW}Docs:${NC} (none)"
+        fi
+
+        # Post-merge action
+        echo ""
+        if [ "$delete_source" = true ]; then
+            echo -e "  Post-merge: ${RED}delete${NC} '${source}'"
+        else
+            echo -e "  Post-merge: ${BLUE}archive${NC} '${source}'"
+        fi
+
+        echo ""
+        echo -en "${YELLOW}Proceed with merge?${NC} [y/N] "
+        read -r response
+
+        if [[ ! "$response" =~ ^[Yy]$ ]]; then
+            echo "Aborted."
+            return
+        fi
+    fi
+
+    # --- Execute merge ---
+
+    # 1. AGENTS.md
+    if [ -f "$source_md" ] && [ -s "$source_md" ]; then
+        if [ -f "$target_md" ] && [ -s "$target_md" ]; then
+            printf '\n\n---\n<!-- Merged from: %s -->\n\n' "$source" >> "$target_md"
+            cat "$source_md" >> "$target_md"
+        else
+            mkdir -p "$(dirname "$target_md")"
+            cp "$source_md" "$target_md"
+        fi
+        local merged_md=true
+        _is_json || echo -e "${GREEN}Merged AGENTS.md${NC}"
+    else
+        local merged_md=false
+    fi
+
+    # 2. Tasks
+    local merged_tasks=false
+    if [ -d "$source_tasks" ]; then
+        mkdir -p "$target_tasks"
+        for tf in todo.md lessons.md; do
+            _merge_task_file "$source_tasks/$tf" "$target_tasks/$tf" "$source"
+        done
+        merged_tasks=true
+        _is_json || echo -e "${GREEN}Merged tasks${NC}"
+    fi
+
+    # 3. Docs
+    if [ ${#doc_copy[@]} -gt 0 ]; then
+        mkdir -p "$target_docs"
+        for f in "${doc_copy[@]}"; do
+            cp -r "$source_docs/$f" "$target_docs/$f"
+        done
+        _is_json || echo -e "${GREEN}Copied ${#doc_copy[@]} doc file(s)${NC}"
+    fi
+    if [ ${#doc_skip[@]} -gt 0 ]; then
+        _is_json || echo -e "${YELLOW}Skipped ${#doc_skip[@]} conflicting doc file(s)${NC}"
+    fi
+
+    # 3b. Deploy merged content to worktree if target is worktree-backed
+    if [ "$target_is_active" = false ] && is_worktree_feature "$target"; then
+        deploy_to_worktree "$target"
+        _is_json || echo -e "${GREEN}Deployed merged content to worktree${NC}"
+    fi
+
+    # 4. Archive or delete source
+    local post_action=""
+    if [ "$delete_source" = true ]; then
+        # Clean up worktree if source is worktree-backed
+        if is_worktree_feature "$source"; then
+            remove_worktree "$source" true
+        fi
+        rm -rf "$source_dir"
+        [ -d "$DOCS_DIR/$source" ] && rm -rf "$DOCS_DIR/$source"
+        [ -d "$DOCS_DIR/archived/$source" ] && rm -rf "$DOCS_DIR/archived/$source"
+        rmdir "$DOCS_DIR/archived" 2>/dev/null || true
+        rmdir "$FEATURES_DIR/archived" 2>/dev/null || true
+        post_action="deleted"
+        _is_json || echo -e "${GREEN}Deleted source feature '${source}'${NC}"
+    elif [ "$source_archived" = true ]; then
+        post_action="already_archived"
+        _is_json || echo -e "${BLUE}Source '${source}' was already archived${NC}"
+    else
+        mkdir -p "$FEATURES_DIR/archived"
+        mv "$source_dir" "$(get_archived_feature_dir "$source")"
+        if [ -d "$DOCS_DIR/$source" ]; then
+            mkdir -p "$DOCS_DIR/archived"
+            mv "$DOCS_DIR/$source" "$DOCS_DIR/archived/$source"
+        fi
+        post_action="archived"
+        _is_json || echo -e "${GREEN}Archived source feature '${source}'${NC}"
+    fi
+
+    if _is_json; then
+        _json_emit "success" "@bool:true" "command" "merge" \
+            "source" "$source" "target" "$target" \
+            "merged" "@json:{\"claude_md\":$merged_md,\"tasks\":$merged_tasks,\"docs_copied\":${#doc_copy[@]},\"docs_skipped\":${#doc_skip[@]}}" \
+            "post_action" "$post_action"
+        return
+    fi
+
+    echo ""
+    echo -e "${GREEN}Successfully merged '${source}' into '${target}'${NC}"
+}
+
+# Sync worktree feature context back to storage
+sync_worktrees() {
+    local name="$1"
+
+    if [ -n "$name" ]; then
+        # Sync specific feature
+        if ! is_worktree_feature "$name"; then
+            _is_json && _json_error "'${name}' is not a worktree-backed feature"
+            echo -e "${RED}Error: '${name}' is not a worktree-backed feature${NC}" >&2
+            exit 1
+        fi
+        local wt_path
+        wt_path="$(get_worktree_path "$name")"
+        if [ ! -d "$wt_path" ]; then
+            _is_json && _json_error "Worktree directory missing: ${wt_path}"
+            echo -e "${RED}Error: Worktree directory missing: ${wt_path}${NC}" >&2
+            exit 1
+        fi
+        sync_from_worktree "$name"
+
+        if _is_json; then
+            _json_emit "success" "@bool:true" "command" "sync" \
+                "feature" "$name" "worktree_path" "$wt_path"
+            return
+        fi
+        echo -e "${GREEN}Synced '${name}' from worktree${NC}"
+    else
+        # Sync all worktree features
+        local count=0
+        local synced=()
+        for feature in $(get_features); do
+            if is_worktree_feature "$feature"; then
+                local wt_path
+                wt_path="$(get_worktree_path "$feature")"
+                if [ -d "$wt_path" ]; then
+                    sync_from_worktree "$feature"
+                    count=$((count + 1))
+                    synced+=("$feature")
+                    _is_json || echo -e "${GREEN}Synced '${feature}'${NC}"
+                else
+                    _is_json || echo -e "${YELLOW}Skipped '${feature}' — worktree dir missing${NC}"
+                fi
+            fi
+        done
+
+        if _is_json; then
+            local synced_str=""
+            synced_str=$(printf '%s\n' "${synced[@]}")
+            _json_emit "success" "@bool:true" "command" "sync" \
+                "count" "@int:$count" "synced" "@array:$synced_str"
+            return
+        fi
+
+        if [ "$count" -eq 0 ]; then
+            echo -e "${YELLOW}No worktree features to sync${NC}"
+        else
+            echo -e "${GREEN}Synced ${count} worktree feature(s)${NC}"
+        fi
+    fi
+}
+
+# Print the worktree path for a feature (pipe-friendly)
+open_worktree() {
+    local name="$1"
+
+    if [ -z "$name" ]; then
+        _is_json && _json_error "Please provide a feature name"
+        echo -e "${RED}Error: Please provide a feature name${NC}" >&2
+        echo "Usage: cody-switch open <name>" >&2
+        exit 1
+    fi
+
+    if ! is_worktree_feature "$name"; then
+        _is_json && _json_error "'${name}' is not a worktree-backed feature"
+        echo -e "${RED}Error: '${name}' is not a worktree-backed feature${NC}" >&2
+        exit 1
+    fi
+
+    local wt_path
+    wt_path="$(get_worktree_path "$name")"
+
+    if [ ! -d "$wt_path" ]; then
+        _is_json && _json_error "Worktree directory missing: ${wt_path}"
+        echo -e "${RED}Error: Worktree directory missing: ${wt_path}${NC}" >&2
+        exit 1
+    fi
+
+    if _is_json; then
+        _json_emit "success" "@bool:true" "command" "open" \
+            "feature" "$name" "worktree_path" "$wt_path"
+        return
+    fi
+
+    # Print just the path (pipe-friendly: cd $(cody-switch open feat))
+    echo "$wt_path"
+}
+
+# Dispatch switch command: resolves numbers, collects --with args
+_dispatch_switch() {
+    local primary=""
+    local switch_args=()
+    local expect_with_value=false
+    local features=($(get_features))
+
+    # Resolve a number or name to a feature name
+    _resolve_feature() {
+        local val="$1"
+        if [[ "$val" =~ ^[0-9]+$ ]]; then
+            local idx=$(($val - 1))
+            if [ $idx -lt 0 ] || [ $idx -ge ${#features[@]} ]; then
+                echo -e "${RED}Error: Invalid number $val. Use 1-${#features[@]}${NC}" >&2
+                exit 1
+            fi
+            echo "${features[$idx]}"
+        else
+            echo "$val"
+        fi
+    }
+
+    for arg in "$@"; do
+        if [ "$expect_with_value" = true ]; then
+            switch_args+=("--with" "$(_resolve_feature "$arg")")
+            expect_with_value=false
+        elif [ "$arg" = "--with" ]; then
+            expect_with_value=true
+        elif [[ "$arg" == --with=* ]]; then
+            switch_args+=("--with" "$(_resolve_feature "${arg#--with=}")")
+        elif [ -z "$primary" ]; then
+            primary="$(_resolve_feature "$arg")"
+        fi
+    done
+
+    if [ "$expect_with_value" = true ]; then
+        echo -e "${RED}Error: --with requires a feature name or number${NC}" >&2
+        exit 1
+    fi
+
+    switch_to "$primary" "${switch_args[@]}"
+}
+
+# Main
+case "${1:-list}" in
+    list|ls|-l)
+        list_features "$2"
+        ;;
+    current|-c)
+        if _is_json; then
+            _refs=""
+            [ -f "$WITH_REFS_FILE" ] && _refs=$(paste -sd $'\n' "$WITH_REFS_FILE")
+            _json_emit "success" "@bool:true" "command" "current" \
+                "feature" "$(get_current)" "branch" "$(get_branch)" \
+                "refs" "@array:$_refs"
+        else
+            current_feature="$(get_current)"
+            echo -e "Current branch:  ${CYAN}$(get_branch)${NC}"
+            echo -e "Current feature: ${GREEN}${current_feature}${NC}"
+            if [ -f "$WITH_REFS_FILE" ]; then
+                echo -e "With references: ${BLUE}$(paste -sd ', ' "$WITH_REFS_FILE")${NC}"
+            fi
+            if [ "$current_feature" != "(none)" ] && [ "$current_feature" != "(active but untracked)" ]; then
+                restore_session "$current_feature"
+            fi
+        fi
+        ;;
+    new|create|-n)
+        create_new "$2"
+        ;;
+    blank|-b)
+        shift
+        create_blank "$@"
+        ;;
+    fork|-f)
+        shift
+        fork_feature "$@"
+        ;;
+    peek|show|cat)
+        peek_feature "$2"
+        ;;
+    archive)
+        archive_feature "$2"
+        ;;
+    unarchive)
+        unarchive_feature "$2"
+        ;;
+    delete|rm)
+        delete_feature "$2"
+        ;;
+    pin-session|pin)
+        pin_session
+        ;;
+    promote-lesson|promote)
+        promote_lesson "$2"
+        ;;
+    promote-audit|audit)
+        promote_audit
+        ;;
+    merge|-m)
+        shift
+        merge_feature "$@"
+        ;;
+    doctor|health|diagnose)
+        doctor "$2"
+        ;;
+    save)
+        save_command
+        ;;
+    sync)
+        sync_worktrees "$2"
+        ;;
+    open)
+        open_worktree "$2"
+        ;;
+    init)
+        shift
+        init_project "$@"
+        ;;
+    help|-h|--help)
+        show_help
+        ;;
+    *)
+        _dispatch_switch "$@"
+        ;;
+esac

@@ -1,0 +1,38 @@
+name: Release video-tutorial
+
+on:
+  push:
+    tags: ['video-tutorial-v*']
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache-dependency-path: video-tutorial/go.sum
+
+      # Strip "video-tutorial-" prefix so goreleaser sees clean semver (e.g., "v0.1.0")
+      - name: Extract version
+        id: version
+        run: echo "tag=${GITHUB_REF_NAME#video-tutorial-}" >> "$GITHUB_OUTPUT"
+
+      # Create a temporary clean tag for goreleaser
+      - name: Create semver tag
+        run: git tag "${{ steps.version.outputs.tag }}"
+
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: '~> v2'
+          args: release --clean
+          workdir: video-tutorial
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GORELEASER_CURRENT_TAG: ${{ steps.version.outputs.tag }}

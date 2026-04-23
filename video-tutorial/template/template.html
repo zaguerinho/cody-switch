@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Building a REST API with Express — Tutorial</title>
+  <link rel="stylesheet" href="player.css">
+</head>
+<body>
+
+<div class="player-layout">
+
+  <!-- ==================== SIDEBAR ==================== -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <h1>Building a REST API with Express</h1>
+      <div class="tutorial-meta">5 chapters &middot; 24:35</div>
+    </div>
+
+    <ol class="chapter-list">
+      <!-- Chapter 1: Complete -->
+      <li class="chapter-item chapter-item--complete">
+        <span class="chapter-status">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="8" cy="8" r="7"/>
+            <path d="M5 8l2 2 4-4"/>
+          </svg>
+        </span>
+        <div class="chapter-info">
+          <div class="chapter-title">Project Setup & Dependencies</div>
+          <div class="chapter-duration">3:20</div>
+        </div>
+      </li>
+
+      <!-- Chapter 2: Current -->
+      <li class="chapter-item chapter-item--active">
+        <span class="chapter-status">
+          <span class="status-dot"></span>
+        </span>
+        <div class="chapter-info">
+          <div class="chapter-title">Creating the Express Server</div>
+          <div class="chapter-duration">4:15</div>
+        </div>
+      </li>
+
+      <!-- Chapter 3: Pending -->
+      <li class="chapter-item">
+        <span class="chapter-status">
+          <span class="status-dot"></span>
+        </span>
+        <div class="chapter-info">
+          <div class="chapter-title">Route Handlers & Middleware</div>
+          <div class="chapter-duration">5:40</div>
+        </div>
+      </li>
+
+      <!-- Chapter 4: Pending -->
+      <li class="chapter-item">
+        <span class="chapter-status">
+          <span class="status-dot"></span>
+        </span>
+        <div class="chapter-info">
+          <div class="chapter-title">Error Handling Patterns</div>
+          <div class="chapter-duration">4:10</div>
+        </div>
+      </li>
+
+      <!-- Chapter 5: Pending -->
+      <li class="chapter-item">
+        <span class="chapter-status">
+          <span class="status-dot"></span>
+        </span>
+        <div class="chapter-info">
+          <div class="chapter-title">Testing with Supertest</div>
+          <div class="chapter-duration">7:10</div>
+        </div>
+      </li>
+    </ol>
+
+    <div class="sidebar-footer">
+      <div class="sidebar-progress">
+        <span>1 of 5</span>
+        <div class="sidebar-progress-bar">
+          <div class="sidebar-progress-fill" style="width: 20%"></div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ==================== TOP BAR ==================== -->
+  <header class="topbar">
+    <span class="topbar-chapter-badge">Chapter 2</span>
+    <span class="topbar-title">Creating the Express Server</span>
+    <div class="topbar-actions">
+      <!-- Chatbot toggle -->
+      <button class="btn-icon btn-chatbot-toggle" aria-label="Ask about this code">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        </svg>
+      </button>
+    </div>
+    <div class="topbar-progress">
+      <div class="topbar-progress-fill" style="width: 0%"></div>
+    </div>
+  </header>
+
+  <!-- ==================== CODE VIEWER ==================== -->
+  <main class="code-viewer">
+    <div class="file-tabs">
+      <button class="file-tab file-tab--active">
+        <svg class="file-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+        </svg>
+        server.js
+      </button>
+    </div>
+
+    <div class="code-container">
+      <!-- Line 1 -->
+      <div class="code-line">
+        <span class="line-number">1</span>
+        <span class="line-content"><span class="tk-comment">// server.js - Express REST API</span></span>
+      </div>
+      <!-- Line 2 -->
+      <div class="code-line">
+        <span class="line-number">2</span>
+        <span class="line-content"><span class="tk-keyword">const</span> express = <span class="tk-function">require</span><span class="tk-punct">(</span><span class="tk-string">'express'</span><span class="tk-punct">)</span><span class="tk-punct">;</span></span>
+      </div>
+      <!-- Line 3 -->
+      <div class="code-line">
+        <span class="line-number">3</span>
+        <span class="line-content"><span class="tk-keyword">const</span> cors = <span class="tk-function">require</span><span class="tk-punct">(</span><span class="tk-string">'cors'</span><span class="tk-punct">)</span><span class="tk-punct">;</span></span>
+      </div>
+      <!-- Line 4 -->
+      <div class="code-line">
+        <span class="line-number">4</span>
+        <span class="line-content"></span>
+      </div>
+      <!-- Line 5 -->
+      <div class="code-line">
+        <span class="line-number">5</span>
+        <span class="line-content"><span class="tk-keyword">const</span> app = <span class="tk-function">express</span><span class="tk-punct">(</span><span class="tk-punct">)</span><span class="tk-punct">;</span></span>
+      </div>
+      <!-- Line 6 -->
+      <div class="code-line">
+        <span class="line-number">6</span>
+        <span class="line-content"><span class="tk-keyword">const</span> PORT = process.env.PORT || <span class="tk-number">3000</span><span class="tk-punct">;</span></span>
+      </div>
+      <!-- Line 7 -->
+      <div class="code-line">
+        <span class="line-number">7</span>
+        <span class="line-content"></span>
+      </div>
+      <!-- Line 8 -->
+      <div class="code-line">
+        <span class="line-number">8</span>
+        <span class="line-content"><span class="tk-comment">// Middleware</span></span>
+      </div>
+      <!-- Line 9 -->
+      <div class="code-line">
+        <span class="line-number">9</span>
+        <span class="line-content">app.<span class="tk-function">use</span><span class="tk-punct">(</span><span class="tk-function">cors</span><span class="tk-punct">(</span><span class="tk-punct">)</span><span class="tk-punct">)</span><span class="tk-punct">;</span></span>
+      </div>
+      <!-- Line 10 -->
+      <div class="code-line">
+        <span class="line-number">10</span>
+        <span class="line-content">app.<span class="tk-function">use</span><span class="tk-punct">(</span>express.<span class="tk-function">json</span><span class="tk-punct">(</span><span class="tk-punct">)</span><span class="tk-punct">)</span><span class="tk-punct">;</span></span>
+      </div>
+      <!-- Line 11 -->
+      <div class="code-line">
+        <span class="line-number">11</span>
+        <span class="line-content"></span>
+      </div>
+      <!-- Line 12 -->
+      <div class="code-line">
+        <span class="line-number">12</span>
+        <span class="line-content"><span class="tk-comment">// In-memory data store</span></span>
+      </div>
+      <!-- Line 13 -->
+      <div class="code-line">
+        <span class="line-number">13</span>
+        <span class="line-content"><span class="tk-keyword">const</span> todos = <span class="tk-punct">[</span></span>
+      </div>
+      <!-- Line 14 -->
+      <div class="code-line">
+        <span class="line-number">14</span>
+        <span class="line-content">  <span class="tk-punct">{</span> id<span class="tk-punct">:</span> <span class="tk-number">1</span><span class="tk-punct">,</span> title<span class="tk-punct">:</span> <span class="tk-string">'Learn Express'</span><span class="tk-punct">,</span> completed<span class="tk-punct">:</span> <span class="tk-keyword">true</span> <span class="tk-punct">}</span><span class="tk-punct">,</span></span>
+      </div>
+      <!-- Line 15 -->
+      <div class="code-line">
+        <span class="line-number">15</span>
+        <span class="line-content">  <span class="tk-punct">{</span> id<span class="tk-punct">:</span> <span class="tk-number">2</span><span class="tk-punct">,</span> title<span class="tk-punct">:</span> <span class="tk-string">'Build REST API'</span><span class="tk-punct">,</span> completed<span class="tk-punct">:</span> <span class="tk-keyword">false</span> <span class="tk-punct">}</span><span class="tk-punct">,</span></span>
+      </div>
+      <!-- Line 16 -->
+      <div class="code-line">
+        <span class="line-number">16</span>
+        <span class="line-content"><span class="tk-punct">]</span><span class="tk-punct">;</span></span>
+      </div>
+      <!-- Line 17 -->
+      <div class="code-line">
+        <span class="line-number">17</span>
+        <span class="line-content"></span>
+      </div>
+      <!-- Line 18: HIGHLIGHTED -->
+      <div class="code-line">
+        <span class="line-number">18</span>
+        <span class="line-content"><span class="tk-comment">// GET all todos</span></span>
+      </div>
+      <!-- Line 19: HIGHLIGHTED -->
+      <div class="code-line">
+        <span class="line-number">19</span>
+        <span class="line-content">app.<span class="tk-function">get</span><span class="tk-punct">(</span><span class="tk-string">'/api/todos'</span><span class="tk-punct">,</span> <span class="tk-punct">(</span>req<span class="tk-punct">,</span> res<span class="tk-punct">)</span> <span class="tk-keyword">=&gt;</span> <span class="tk-punct">{</span></span>
+      </div>
+      <!-- Line 20: HIGHLIGHTED -->
+      <div class="code-line">
+        <span class="line-number">20</span>
+        <span class="line-content">  res.<span class="tk-function">json</span><span class="tk-punct">(</span>todos<span class="tk-punct">)</span><span class="tk-punct">;</span></span>
+      </div>
+      <!-- Line 21: HIGHLIGHTED -->
+      <div class="code-line">
+        <span class="line-number">21</span>
+        <span class="line-content"><span class="tk-punct">}</span><span class="tk-punct">)</span><span class="tk-punct">;</span></span>
+      </div>
+      <!-- Line 22 -->
+      <div class="code-line">
+        <span class="line-number">22</span>
+        <span class="line-content"></span>
+      </div>
+      <!-- Line 23 -->
+      <div class="code-line">
+        <span class="line-number">23</span>
+        <span class="line-content"><span class="tk-comment">// GET single todo</span></span>
+      </div>
+      <!-- Line 24 -->
+      <div class="code-line">
+        <span class="line-number">24</span>
+        <span class="line-content">app.<span class="tk-function">get</span><span class="tk-punct">(</span><span class="tk-string">'/api/todos/:id'</span><span class="tk-punct">,</span> <span class="tk-punct">(</span>req<span class="tk-punct">,</span> res<span class="tk-punct">)</span> <span class="tk-keyword">=&gt;</span> <span class="tk-punct">{</span></span>
+      </div>
+      <!-- Line 25 -->
+      <div class="code-line">
+        <span class="line-number">25</span>
+        <span class="line-content">  <span class="tk-keyword">const</span> todo = todos.<span class="tk-function">find</span><span class="tk-punct">(</span>t <span class="tk-keyword">=&gt;</span> t.id === <span class="tk-function">parseInt</span><span class="tk-punct">(</span>req.params.id<span class="tk-punct">)</span><span class="tk-punct">)</span><span class="tk-punct">;</span></span>
+      </div>
+      <!-- Line 26 -->
+      <div class="code-line">
+        <span class="line-number">26</span>
+        <span class="line-content">  <span class="tk-keyword">if</span> <span class="tk-punct">(</span>!todo<span class="tk-punct">)</span> <span class="tk-punct">{</span></span>
+      </div>
+      <!-- Line 27 -->
+      <div class="code-line">
+        <span class="line-number">27</span>
+        <span class="line-content">    <span class="tk-keyword">return</span> res.<span class="tk-function">status</span><span class="tk-punct">(</span><span class="tk-number">404</span><span class="tk-punct">)</span>.<span class="tk-function">json</span><span class="tk-punct">(</span><span class="tk-punct">{</span> error<span class="tk-punct">:</span> <span class="tk-string">'Todo not found'</span> <span class="tk-punct">}</span><span class="tk-punct">)</span><span class="tk-punct">;</span></span>
+      </div>
+      <!-- Line 28 -->
+      <div class="code-line">
+        <span class="line-number">28</span>
+        <span class="line-content">  <span class="tk-punct">}</span></span>
+      </div>
+      <!-- Line 29 -->
+      <div class="code-line">
+        <span class="line-number">29</span>
+        <span class="line-content">  res.<span class="tk-function">json</span><span class="tk-punct">(</span>todo<span class="tk-punct">)</span><span class="tk-punct">;</span></span>
+      </div>
+      <!-- Line 30 -->
+      <div class="code-line">
+        <span class="line-number">30</span>
+        <span class="line-content"><span class="tk-punct">}</span><span class="tk-punct">)</span><span class="tk-punct">;</span></span>
+      </div>
+      <!-- Line 31 -->
+      <div class="code-line">
+        <span class="line-number">31</span>
+        <span class="line-content"></span>
+      </div>
+      <!-- Line 32 -->
+      <div class="code-line">
+        <span class="line-number">32</span>
+        <span class="line-content"><span class="tk-comment">// POST create todo</span></span>
+      </div>
+      <!-- Line 33 -->
+      <div class="code-line">
+        <span class="line-number">33</span>
+        <span class="line-content">app.<span class="tk-function">post</span><span class="tk-punct">(</span><span class="tk-string">'/api/todos'</span><span class="tk-punct">,</span> <span class="tk-punct">(</span>req<span class="tk-punct">,</span> res<span class="tk-punct">)</span> <span class="tk-keyword">=&gt;</span> <span class="tk-punct">{</span></span>
+      </div>
+      <!-- Line 34 -->
+      <div class="code-line">
+        <span class="line-number">34</span>
+        <span class="line-content">  <span class="tk-keyword">const</span> <span class="tk-punct">{</span> title <span class="tk-punct">}</span> = req.body<span class="tk-punct">;</span></span>
+      </div>
+      <!-- Line 35 -->
+      <div class="code-line">
+        <span class="line-number">35</span>
+        <span class="line-content">  <span class="tk-keyword">if</span> <span class="tk-punct">(</span>!title<span class="tk-punct">)</span> <span class="tk-punct">{</span></span>
+      </div>
+      <!-- Line 36 -->
+      <div class="code-line">
+        <span class="line-number">36</span>
+        <span class="line-content">    <span class="tk-keyword">return</span> res.<span class="tk-function">status</span><span class="tk-punct">(</span><span class="tk-number">400</span><span class="tk-punct">)</span>.<span class="tk-function">json</span><span class="tk-punct">(</span><span class="tk-punct">{</span> error<span class="tk-punct">:</span> <span class="tk-string">'Title is required'</span> <span class="tk-punct">}</span><span class="tk-punct">)</span><span class="tk-punct">;</span></span>
+      </div>
+      <!-- Line 37 -->
+      <div class="code-line">
+        <span class="line-number">37</span>
+        <span class="line-content">  <span class="tk-punct">}</span></span>
+      </div>
+      <!-- Line 38 -->
+      <div class="code-line">
+        <span class="line-number">38</span>
+        <span class="line-content">  <span class="tk-keyword">const</span> newTodo = <span class="tk-punct">{</span></span>
+      </div>
+      <!-- Line 39 -->
+      <div class="code-line">
+        <span class="line-number">39</span>
+        <span class="line-content">    id<span class="tk-punct">:</span> todos.length + <span class="tk-number">1</span><span class="tk-punct">,</span></span>
+      </div>
+      <!-- Line 40 -->
+      <div class="code-line">
+        <span class="line-number">40</span>
+        <span class="line-content">    title<span class="tk-punct">,</span></span>
+      </div>
+      <!-- Line 41 -->
+      <div class="code-line">
+        <span class="line-number">41</span>
+        <span class="line-content">    completed<span class="tk-punct">:</span> <span class="tk-keyword">false</span></span>
+      </div>
+      <!-- Line 42 -->
+      <div class="code-line">
+        <span class="line-number">42</span>
+        <span class="line-content">  <span class="tk-punct">}</span><span class="tk-punct">;</span></span>
+      </div>
+      <!-- Line 43 -->
+      <div class="code-line">
+        <span class="line-number">43</span>
+        <span class="line-content">  todos.<span class="tk-function">push</span><span class="tk-punct">(</span>newTodo<span class="tk-punct">)</span><span class="tk-punct">;</span></span>
+      </div>
+      <!-- Line 44 -->
+      <div class="code-line">
+        <span class="line-number">44</span>
+        <span class="line-content">  res.<span class="tk-function">status</span><span class="tk-punct">(</span><span class="tk-number">201</span><span class="tk-punct">)</span>.<span class="tk-function">json</span><span class="tk-punct">(</span>newTodo<span class="tk-punct">)</span><span class="tk-punct">;</span></span>
+      </div>
+      <!-- Line 45 -->
+      <div class="code-line">
+        <span class="line-number">45</span>
+        <span class="line-content"><span class="tk-punct">}</span><span class="tk-punct">)</span><span class="tk-punct">;</span></span>
+      </div>
+      <!-- Line 46 -->
+      <div class="code-line">
+        <span class="line-number">46</span>
+        <span class="line-content"></span>
+      </div>
+      <!-- Line 47 -->
+      <div class="code-line">
+        <span class="line-number">47</span>
+        <span class="line-content"><span class="tk-comment">// Start server</span></span>
+      </div>
+      <!-- Line 48 -->
+      <div class="code-line">
+        <span class="line-number">48</span>
+        <span class="line-content">app.<span class="tk-function">listen</span><span class="tk-punct">(</span>PORT<span class="tk-punct">,</span> <span class="tk-punct">(</span><span class="tk-punct">)</span> <span class="tk-keyword">=&gt;</span> <span class="tk-punct">{</span></span>
+      </div>
+      <!-- Line 49 -->
+      <div class="code-line">
+        <span class="line-number">49</span>
+        <span class="line-content">  console.<span class="tk-function">log</span><span class="tk-punct">(</span><span class="tk-string">`Server running on port </span><span class="tk-keyword">${</span>PORT<span class="tk-keyword">}</span><span class="tk-string">`</span><span class="tk-punct">)</span><span class="tk-punct">;</span></span>
+      </div>
+      <!-- Line 50 -->
+      <div class="code-line">
+        <span class="line-number">50</span>
+        <span class="line-content"><span class="tk-punct">}</span><span class="tk-punct">)</span><span class="tk-punct">;</span></span>
+      </div>
+    </div>
+
+    <!-- Narration transcript -->
+    <div class="transcript-bar">
+      <div class="transcript-text">
+        The <span class="word--active">GET</span> all todos endpoint is the simplest route handler &mdash; it returns the full array as JSON with a 200 status.
+      </div>
+    </div>
+  </main>
+
+  <!-- ==================== AUDIO CONTROLS ==================== -->
+  <footer class="controls">
+    <!-- Play/Pause -->
+    <button class="btn-play" aria-label="Play">
+      <svg viewBox="0 0 24 24" fill="currentColor">
+        <polygon points="5,3 19,12 5,21"/>
+      </svg>
+    </button>
+
+    <!-- Time -->
+    <span class="time-display">0:00 / 0:10</span>
+
+    <!-- Scrub bar -->
+    <div class="scrub-bar">
+      <div class="scrub-track">
+        <div class="scrub-fill" style="width: 0%">
+          <span class="scrub-thumb"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Speed & Volume -->
+    <div class="control-group">
+      <button class="btn-speed">1x</button>
+
+      <button class="btn-control" aria-label="Volume">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+          <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+          <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+        </svg>
+      </button>
+
+      <div class="volume-slider">
+        <div class="volume-fill"></div>
+      </div>
+    </div>
+  </footer>
+
+</div><!-- .player-layout -->
+
+<!-- ==================== CHATBOT DRAWER ==================== -->
+<div class="chatbot-drawer">
+  <div class="chatbot-header">
+    <h2>Ask about this code</h2>
+    <button class="btn-icon btn-chatbot-close" aria-label="Close">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="18" y1="6" x2="6" y2="18"/>
+        <line x1="6" y1="6" x2="18" y2="18"/>
+      </svg>
+    </button>
+  </div>
+
+  <div class="chatbot-messages">
+    <div class="chatbot-empty">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+      </svg>
+      <p>Pause the tutorial and ask anything about the code you're seeing. I'll answer using the current chapter context.</p>
+    </div>
+  </div>
+
+  <div class="chatbot-input">
+    <input type="text" placeholder="Ask a question..." aria-label="Chat input">
+    <button aria-label="Send">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="22" y1="2" x2="11" y2="13"/>
+        <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+      </svg>
+    </button>
+  </div>
+</div>
+
+<!-- ==================== MODULES ==================== -->
+<script type="module">
+import SyncEngine from '../browser/sync.js';
+import SceneRenderer from '../browser/renderer.js';
+import Chatbot from '../browser/chatbot.js';
+
+// --- Test data: word timestamps spanning 3 chapters ---
+const WORDS = [
+  // Chapter 1: "Project Setup" — highlights lines 1-6
+  { word: "First",      start: 0.0,  end: 0.25 },
+  { word: "we",         start: 0.25, end: 0.35 },
+  { word: "require",    start: 0.35, end: 0.7  },
+  { word: "Express",    start: 0.7,  end: 1.1  },
+  { word: "and",        start: 1.1,  end: 1.25 },
+  { word: "CORS,",      start: 1.25, end: 1.6  },
+  { word: "then",       start: 1.6,  end: 1.8  },
+  { word: "create",     start: 1.8,  end: 2.1  },
+  { word: "the",        start: 2.1,  end: 2.2  },
+  { word: "app",        start: 2.2,  end: 2.5  },
+  { word: "instance.",  start: 2.5,  end: 3.0  },
+  // Chapter 2: "Creating the Express Server" — highlights lines 18-21
+  { word: "The",        start: 3.5,  end: 3.7  },
+  { word: "GET",        start: 3.7,  end: 4.0  },
+  { word: "all",        start: 4.0,  end: 4.15 },
+  { word: "todos",      start: 4.15, end: 4.5  },
+  { word: "endpoint",   start: 4.5,  end: 4.9  },
+  { word: "returns",    start: 4.9,  end: 5.3  },
+  { word: "the",        start: 5.3,  end: 5.4  },
+  { word: "full",       start: 5.4,  end: 5.6  },
+  { word: "array",      start: 5.6,  end: 5.9  },
+  { word: "as",         start: 5.9,  end: 6.0  },
+  { word: "JSON.",      start: 6.0,  end: 6.4  },
+  // Chapter 3: "Route Handlers" — highlights lines 32-45
+  { word: "The",        start: 7.0,  end: 7.15 },
+  { word: "POST",       start: 7.15, end: 7.5  },
+  { word: "route",      start: 7.5,  end: 7.8  },
+  { word: "validates",  start: 7.8,  end: 8.2  },
+  { word: "the",        start: 8.2,  end: 8.3  },
+  { word: "title",      start: 8.3,  end: 8.6  },
+  { word: "field",      start: 8.6,  end: 8.9  },
+  { word: "and",        start: 8.9,  end: 9.0  },
+  { word: "pushes",     start: 9.0,  end: 9.3  },
+  { word: "a",          start: 9.3,  end: 9.35 },
+  { word: "new",        start: 9.35, end: 9.55 },
+  { word: "todo.",      start: 9.55, end: 10.0 },
+];
+
+const CHAPTERS = [
+  { id: 'ch1', title: 'Project Setup & Dependencies', startWord: 0 },
+  { id: 'ch2', title: 'Creating the Express Server',  startWord: 11 },
+  { id: 'ch3', title: 'Route Handlers & Middleware',   startWord: 22 },
+];
+
+// Map each word index → a cue ID
+const WORD_TO_CUE = [];
+for (let i = 0;  i < 11; i++) WORD_TO_CUE[i] = 'cue-setup';
+for (let i = 11; i < 22; i++) WORD_TO_CUE[i] = 'cue-get';
+for (let i = 22; i < 34; i++) WORD_TO_CUE[i] = 'cue-post';
+
+const CUE_MAP = {
+  'cue-setup': { type: 'highlight', file: 'server.js', lines: [1, 10],  scroll_to: 1  },
+  'cue-get':   { type: 'highlight', file: 'server.js', lines: [18, 21], scroll_to: 18 },
+  'cue-post':  { type: 'highlight', file: 'server.js', lines: [32, 45], scroll_to: 32 },
+};
+
+const TOTAL_DURATION = 10.5; // seconds
+
+// --- Initialize ---
+SceneRenderer.init();
+SceneRenderer.buildTranscript(WORDS);
+
+SyncEngine.init({
+  wordTimestamps: WORDS,
+  cueMap: CUE_MAP,
+  wordToCue: WORD_TO_CUE,
+  chapters: CHAPTERS,
+  totalDuration: TOTAL_DURATION
+});
+
+// --- Wire controls ---
+
+// Play / Pause
+document.querySelector('.btn-play').addEventListener('click', () => {
+  SyncEngine.toggle();
+});
+
+// Scrub bar: click to seek
+const scrubTrack = document.querySelector('.scrub-track');
+scrubTrack.addEventListener('click', (e) => {
+  const rect = scrubTrack.getBoundingClientRect();
+  const pct = ((e.clientX - rect.left) / rect.width) * 100;
+  SyncEngine.seekPct(Math.max(0, Math.min(100, pct)));
+  if (!SyncEngine.isPlaying) SyncEngine.play();
+});
+
+// Speed toggle: cycle through 0.5x → 1x → 1.5x → 2x
+const SPEEDS = [0.5, 1, 1.5, 2];
+let speedIdx = 1;
+document.querySelector('.btn-speed').addEventListener('click', () => {
+  speedIdx = (speedIdx + 1) % SPEEDS.length;
+  SyncEngine.setRate(SPEEDS[speedIdx]);
+});
+
+// Chapter clicks: seek to chapter start
+document.querySelectorAll('.chapter-item').forEach((item, idx) => {
+  item.addEventListener('click', () => {
+    SyncEngine.seekChapter(CHAPTERS[idx].id);
+    if (!SyncEngine.isPlaying) SyncEngine.play();
+  });
+});
+
+// Chatbot toggle: save/pause on open, resume on close
+document.querySelector('.btn-chatbot-toggle').addEventListener('click', () => {
+  if (document.body.classList.contains('chatbot-open')) {
+    document.body.classList.remove('chatbot-open');
+    SyncEngine.resume();
+  } else {
+    document.body.classList.add('chatbot-open');
+    SyncEngine.saveAndPause();
+  }
+});
+
+document.querySelector('.btn-chatbot-close').addEventListener('click', () => {
+  document.body.classList.remove('chatbot-open');
+  SyncEngine.resume();
+});
+
+// Mark chapter 1 as complete (test data: we're starting at chapter 2)
+SceneRenderer.markChaptersComplete(1);
+
+// Initialize chatbot
+Chatbot.init({
+  syncEngine: SyncEngine,
+  chapters: CHAPTERS,
+  words: WORDS,
+  cueMap: CUE_MAP
+});
+
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  switch (e.key) {
+    case ' ':
+      e.preventDefault();
+      SyncEngine.toggle();
+      break;
+    case 'ArrowRight':
+      e.preventDefault();
+      SyncEngine.seek(SyncEngine.currentTime + 5);
+      break;
+    case 'ArrowLeft':
+      e.preventDefault();
+      SyncEngine.seek(SyncEngine.currentTime - 5);
+      break;
+  }
+});
+</script>
+
+</body>
+</html>

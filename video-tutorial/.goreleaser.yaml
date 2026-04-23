@@ -1,0 +1,35 @@
+version: 2
+
+project_name: video-tutorial
+
+builds:
+  - main: ./cmd/video-tutorial/
+    binary: video-tutorial
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+archives:
+  - formats:
+      - tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: "checksums.txt"
+
+release:
+  # Use the original prefixed tag for the GitHub release name
+  name_template: "video-tutorial v{{ .Version }}"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"

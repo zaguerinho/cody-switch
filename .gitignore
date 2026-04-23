@@ -1,0 +1,26 @@
+# IDE
+.idea/
+
+# OS
+.DS_Store
+
+# Codex local settings
+.codex/settings.local.json
+
+# cody-switch runtime state (dev/test artifacts)
+.codex/features/
+.codex/worktrees/
+.codex/batch/
+.codex-current-feature
+.codex-last-seen-feature
+.codex-with-refs
+
+# Override global ignore for project AGENTS.md
+!AGENTS.md
+
+# Video tutorial generated output
+video-tutorial/output/tutorials/*/
+video-tutorial/.env
+video-tutorial/node_modules/
+video-tutorial/video-tutorial
+agent-hub/agent-hub

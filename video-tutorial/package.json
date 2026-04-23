@@ -1,0 +1,15 @@
+{
+  "name": "video-tutorial",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI-powered code tutorial generator with narrated screencast output",
+  "scripts": {
+    "preview": "open template/template.html",
+    "build": "node src/build-tutorial.js",
+    "assemble": "node src/build-tutorial.js --assemble-only",
+    "test": "node test/unit.js"
+  },
+  "bin": {
+    "build-tutorial": "src/build-tutorial.js"
+  }
+}
