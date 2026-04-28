@@ -55,11 +55,13 @@ cody-switch help
 ```
 
 `install`:
-1. creates `/usr/local/bin/cody-switch`
+1. creates `/usr/local/bin/cody-switch`, or falls back to `~/.local/bin/cody-switch` when sudo is unavailable
 2. seeds `~/AGENTS.md` from `global-agents.md` if needed
 3. installs zsh completion for `cody-switch`
 4. installs core skills to `~/.codex/skills/`
 5. optionally installs extra skills with `--extras` or `--skill`
+
+If the installer uses the `~/.local/bin` fallback and that directory is not on `PATH`, it prints the shell line to add.
 
 If `~/AGENTS.md` already exists and differs, the new template is written to `~/AGENTS.md.template-pending` for manual merge.
 

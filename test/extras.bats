@@ -18,6 +18,9 @@ setup_extras_env() {
     export REAL_HOME="$HOME"
     export HOME="$BATS_TEST_TMPDIR/fakehome"
     mkdir -p "$HOME/.codex"
+    mkdir -p "$HOME/.local/bin"
+    export CODY_SWITCH_SYMLINK_PATH="$HOME/.local/bin/cody-switch"
+    export CODY_SWITCH_USER_SYMLINK_PATH="$HOME/.local/bin/cody-switch"
 
     # Minimal settings.json so hook install doesn't error
     echo '{}' > "$HOME/.codex/settings.json"
@@ -25,6 +28,8 @@ setup_extras_env() {
 
 teardown_extras_env() {
     export HOME="$REAL_HOME"
+    unset CODY_SWITCH_SYMLINK_PATH
+    unset CODY_SWITCH_USER_SYMLINK_PATH
 }
 
 # --- Help text ---
@@ -123,6 +128,18 @@ teardown_extras_env() {
 
     # Should NOT have installed the extra
     [ ! -f "$HOME/.codex/skills/video-tutorial/SKILL.md" ]
+
+    teardown_extras_env
+}
+
+@test "install creates command symlink in configured user path" {
+    setup_extras_env
+
+    run "$CLAUDE_SWITCH" install
+    [ "$status" -eq 0 ]
+
+    [ -L "$HOME/.local/bin/cody-switch" ]
+    [ "$(readlink "$HOME/.local/bin/cody-switch")" = "$CLAUDE_SWITCH" ]
 
     teardown_extras_env
 }

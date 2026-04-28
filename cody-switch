@@ -51,7 +51,8 @@ NC='\033[0m' # No Color
 BOLD='\033[1m'
 DIM='\033[2m'
 
-SYMLINK_PATH="/usr/local/bin/cody-switch"
+SYMLINK_PATH="${CODY_SWITCH_SYMLINK_PATH:-/usr/local/bin/cody-switch}"
+USER_SYMLINK_PATH="${CODY_SWITCH_USER_SYMLINK_PATH:-$HOME/.local/bin/cody-switch}"
 GLOBAL_AGENTS_MD="$HOME/AGENTS.md"
 GLOBAL_TEMPLATE="$SCRIPT_DIR/global-agents.md"
 PROMPT_TEMPLATES_DIR="$SCRIPT_DIR/global-commands"
@@ -60,6 +61,152 @@ GLOBAL_SKILLS_EXTRA_DIR="$SCRIPT_DIR/global-skills-extra"
 CODEX_SKILLS_DIR="$HOME/.codex/skills"
 CODEX_BIN_DIR="$HOME/.codex/bin"
 CODEX_LESSONS_FILE="$HOME/.codex/lessons-global.md"
+
+_path_contains_dir() {
+    local dir="$1"
+    case ":$PATH:" in
+        *":$dir:"*) return 0 ;;
+        *)          return 1 ;;
+    esac
+}
+
+_create_or_update_user_symlink() {
+    local force="$1"
+    local target_dir
+    target_dir="$(dirname "$USER_SYMLINK_PATH")"
+
+    mkdir -p "$target_dir"
+
+    if [ -L "$USER_SYMLINK_PATH" ]; then
+        local current_target
+        current_target="$(readlink "$USER_SYMLINK_PATH" 2>/dev/null || true)"
+        if [ "$current_target" = "$REAL_SCRIPT" ]; then
+            echo -e "${GREEN}User symlink already installed at ${USER_SYMLINK_PATH}${NC}"
+        elif [ "$force" = "--force" ]; then
+            ln -sf "$REAL_SCRIPT" "$USER_SYMLINK_PATH"
+            echo -e "${YELLOW}Updated user symlink: ${USER_SYMLINK_PATH} → ${REAL_SCRIPT}${NC}"
+        else
+            echo -e "${RED}Error: ${USER_SYMLINK_PATH} already exists but points to ${current_target}${NC}" >&2
+            echo -e "Use ${CYAN}cody-switch install --force${NC} to replace it" >&2
+            return 1
+        fi
+    elif [ -e "$USER_SYMLINK_PATH" ]; then
+        echo -e "${RED}Error: ${USER_SYMLINK_PATH} exists and is not a symlink${NC}" >&2
+        echo -e "Remove it manually, then re-run install" >&2
+        return 1
+    else
+        ln -s "$REAL_SCRIPT" "$USER_SYMLINK_PATH"
+        echo -e "${GREEN}Created user symlink: ${USER_SYMLINK_PATH} → ${REAL_SCRIPT}${NC}"
+    fi
+
+    if ! _path_contains_dir "$target_dir"; then
+        echo -e "${YELLOW}  Add to your PATH: export PATH=\"${target_dir}:\$PATH\"${NC}"
+        echo -e "${YELLOW}  Or add that line to your ~/.zshrc or ~/.bashrc${NC}"
+    fi
+}
+
+_try_system_symlink() {
+    local force="$1"
+    local link_dir
+    link_dir="$(dirname "$SYMLINK_PATH")"
+
+    if [ -w "$link_dir" ]; then
+        if [ "$force" = "--force" ]; then
+            ln -sf "$REAL_SCRIPT" "$SYMLINK_PATH"
+        else
+            ln -s "$REAL_SCRIPT" "$SYMLINK_PATH"
+        fi
+        return 0
+    fi
+
+    if [ -t 0 ]; then
+        if [ "$force" = "--force" ]; then
+            sudo ln -sf "$REAL_SCRIPT" "$SYMLINK_PATH"
+        else
+            sudo ln -s "$REAL_SCRIPT" "$SYMLINK_PATH"
+        fi
+        return $?
+    fi
+
+    if sudo -n true 2>/dev/null; then
+        if [ "$force" = "--force" ]; then
+            sudo ln -sf "$REAL_SCRIPT" "$SYMLINK_PATH"
+        else
+            sudo ln -s "$REAL_SCRIPT" "$SYMLINK_PATH"
+        fi
+        return $?
+    fi
+
+    return 1
+}
+
+_install_cody_switch_symlink() {
+    local force="$1"
+
+    if [ -L "$SYMLINK_PATH" ]; then
+        local current_target
+        current_target="$(readlink "$SYMLINK_PATH" 2>/dev/null || true)"
+        if [ "$current_target" = "$REAL_SCRIPT" ]; then
+            echo -e "${GREEN}Symlink already installed at ${SYMLINK_PATH}${NC}"
+        elif [ "$force" = "--force" ]; then
+            echo -e "${YELLOW}Replacing existing symlink (was → ${current_target})${NC}"
+            _try_system_symlink "$force" || {
+                echo -e "${RED}Error: Failed to replace symlink at ${SYMLINK_PATH}${NC}" >&2
+                echo -e "You can create it manually: ${CYAN}sudo ln -sf \"$REAL_SCRIPT\" \"$SYMLINK_PATH\"${NC}" >&2
+                return 1
+            }
+            echo -e "${GREEN}Symlink updated: ${SYMLINK_PATH} → ${REAL_SCRIPT}${NC}"
+        else
+            echo -e "${RED}Error: ${SYMLINK_PATH} already exists but points to ${current_target}${NC}" >&2
+            echo -e "Use ${CYAN}cody-switch install --force${NC} to replace it" >&2
+            return 1
+        fi
+    elif [ -e "$SYMLINK_PATH" ]; then
+        echo -e "${RED}Error: ${SYMLINK_PATH} exists and is not a symlink${NC}" >&2
+        echo -e "Remove it manually, then re-run install" >&2
+        return 1
+    elif _try_system_symlink ""; then
+        echo -e "${GREEN}Created symlink: ${SYMLINK_PATH} → ${REAL_SCRIPT}${NC}"
+    else
+        echo -e "${YELLOW}Could not create ${SYMLINK_PATH} without an interactive sudo prompt${NC}"
+        echo -e "${YELLOW}Falling back to a user-level symlink.${NC}"
+        _create_or_update_user_symlink "$force"
+    fi
+}
+
+_remove_symlink_path() {
+    local path="$1"
+    local label="$2"
+    local needs_sudo="${3:-false}"
+
+    if [ -L "$path" ]; then
+        if [ "$needs_sudo" = true ] && [ ! -w "$(dirname "$path")" ]; then
+            if [ -t 0 ]; then
+                sudo rm "$path" || {
+                    echo -e "${RED}Error: Failed to remove ${label} symlink (sudo required)${NC}" >&2
+                    echo -e "You can remove it manually: ${CYAN}sudo rm \"$path\"${NC}" >&2
+                    return 1
+                }
+            elif sudo -n true 2>/dev/null; then
+                sudo rm "$path" || {
+                    echo -e "${RED}Error: Failed to remove ${label} symlink${NC}" >&2
+                    return 1
+                }
+            else
+                echo -e "${YELLOW}${label} symlink requires sudo to remove: ${path}${NC}"
+                echo -e "Remove it manually: ${CYAN}sudo rm \"$path\"${NC}"
+                return 0
+            fi
+        else
+            rm "$path"
+        fi
+        echo -e "${GREEN}Removed ${label} symlink: ${path}${NC}"
+    elif [ -e "$path" ]; then
+        echo -e "${YELLOW}${path} exists but is not a symlink — skipping${NC}"
+    else
+        echo -e "${YELLOW}No ${label} symlink found at ${path}${NC}"
+    fi
+}
 
 # Show help text
 show_help() {
@@ -238,36 +385,7 @@ install_cody_switch() {
     echo -e "${BOLD}Installing cody-switch...${NC}"
     echo ""
 
-    if [ -L "$SYMLINK_PATH" ]; then
-        local current_target
-        current_target="$(readlink "$SYMLINK_PATH" 2>/dev/null || true)"
-        if [ "$current_target" = "$REAL_SCRIPT" ]; then
-            echo -e "${GREEN}Symlink already installed at ${SYMLINK_PATH}${NC}"
-        elif [ "$force" = "--force" ]; then
-            echo -e "${YELLOW}Replacing existing symlink (was → ${current_target})${NC}"
-            sudo ln -sf "$REAL_SCRIPT" "$SYMLINK_PATH" || {
-                echo -e "${RED}Error: Failed to create symlink (sudo required for ${SYMLINK_PATH})${NC}" >&2
-                echo -e "You can create it manually: ${CYAN}sudo ln -sf \"$REAL_SCRIPT\" \"$SYMLINK_PATH\"${NC}" >&2
-                return 1
-            }
-            echo -e "${GREEN}Symlink updated: ${SYMLINK_PATH} → ${REAL_SCRIPT}${NC}"
-        else
-            echo -e "${RED}Error: ${SYMLINK_PATH} already exists but points to ${current_target}${NC}" >&2
-            echo -e "Use ${CYAN}cody-switch install --force${NC} to replace it" >&2
-            return 1
-        fi
-    elif [ -e "$SYMLINK_PATH" ]; then
-        echo -e "${RED}Error: ${SYMLINK_PATH} exists and is not a symlink${NC}" >&2
-        echo -e "Remove it manually, then re-run install" >&2
-        return 1
-    else
-        sudo ln -s "$REAL_SCRIPT" "$SYMLINK_PATH" || {
-            echo -e "${RED}Error: Failed to create symlink (sudo required for ${SYMLINK_PATH})${NC}" >&2
-            echo -e "You can create it manually: ${CYAN}sudo ln -sf \"$REAL_SCRIPT\" \"$SYMLINK_PATH\"${NC}" >&2
-            return 1
-        }
-        echo -e "${GREEN}Created symlink: ${SYMLINK_PATH} → ${REAL_SCRIPT}${NC}"
-    fi
+    _install_cody_switch_symlink "$force" || return 1
 
     local pending_template="$HOME/AGENTS.md.template-pending"
     if [ -f "$GLOBAL_AGENTS_MD" ] && [ -s "$GLOBAL_AGENTS_MD" ]; then
@@ -371,18 +489,8 @@ uninstall_cody_switch() {
     echo -e "${BOLD}Uninstalling cody-switch...${NC}"
     echo ""
 
-    if [ -L "$SYMLINK_PATH" ]; then
-        sudo rm "$SYMLINK_PATH" || {
-            echo -e "${RED}Error: Failed to remove symlink (sudo required)${NC}" >&2
-            echo -e "You can remove it manually: ${CYAN}sudo rm \"$SYMLINK_PATH\"${NC}" >&2
-            return 1
-        }
-        echo -e "${GREEN}Removed symlink: ${SYMLINK_PATH}${NC}"
-    elif [ -e "$SYMLINK_PATH" ]; then
-        echo -e "${YELLOW}${SYMLINK_PATH} exists but is not a symlink — skipping${NC}"
-    else
-        echo -e "${YELLOW}No symlink found at ${SYMLINK_PATH}${NC}"
-    fi
+    _remove_symlink_path "$SYMLINK_PATH" "system" true
+    _remove_symlink_path "$USER_SYMLINK_PATH" "user" false
 
     if [ -f "$GLOBAL_AGENTS_MD" ]; then
         echo -e "${BLUE}Kept global config at ${GLOBAL_AGENTS_MD}${NC}"
