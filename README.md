@@ -179,6 +179,8 @@ Core skills in `global-skills/` install to `~/.codex/skills/`.
 
 Optional extras in `global-skills-extra/` are opt-in. Some extras are still legacy and may require additional Codex-specific rework before they feel native.
 
+The `sync-switch` core skill documents the maintenance workflow for checking `~/scripts/claude-switch`, deciding which upstream changes apply, porting them into `cody-switch`, and updating `docs/upstream/claude-switch-sync.md`.
+
 ## Development
 
 ```bash

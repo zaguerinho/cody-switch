@@ -1,0 +1,242 @@
+/* PDF print stylesheet — agent-hub tutorial */
+
+/* ── Color reference ────────────────────────────────────────
+   Primary text:     #2D2D2D  (dark gray)
+   Accent:           #7C3AED  (violet — matches agent-hub theme)
+   Table headers:    #1E293B  (slate-900)
+   Borders/dividers: #E2E8F0  (slate-200)
+   Alternating rows: #F8FAFC  (slate-50)
+   Blockquote bg:    #F5F3FF  (violet-50)
+   Code bg:          #F1F5F9  (slate-100)
+   Terminal bg:      #1E1E2E  (dark terminal)
+   ──────────────────────────────────────────────────────────── */
+
+/* ── Page layout ─────────────────────────────────────────── */
+@page {
+  size: letter;
+  margin: 25mm 20mm;
+  @top-center {
+    content: "agent-hub Demo Tutorial";
+    font-size: 8pt;
+    color: #999;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  @bottom-center {
+    content: "Page " counter(page);
+    font-size: 8pt;
+    color: #999;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  @bottom-right {
+    content: "cody-switch / agent-hub";
+    font-size: 7pt;
+    color: #bbb;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+}
+
+@page:first {
+  @top-center { content: ""; }
+}
+
+/* ── Typography ──────────────────────────────────────────── */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  font-size: 11pt;
+  line-height: 1.55;
+  color: #2D2D2D;
+}
+
+h1 {
+  color: #2D2D2D;
+  border-bottom: 3px solid #7C3AED;
+  padding-bottom: 8px;
+  margin-top: 30px;
+  font-size: 24pt;
+  page-break-after: avoid;
+}
+
+h2 {
+  color: #2D2D2D;
+  border-bottom: 1px solid #E2E8F0;
+  padding-bottom: 5px;
+  margin-top: 24px;
+  font-size: 16pt;
+  page-break-before: always;
+  page-break-after: avoid;
+}
+
+h1 + h2 {
+  page-break-before: avoid;
+  border-bottom: none;
+  font-size: 14pt;
+  color: #555;
+}
+
+h3 {
+  color: #333;
+  margin-top: 18px;
+  font-size: 13pt;
+  page-break-after: avoid;
+}
+
+h4 {
+  color: #555;
+  font-size: 11pt;
+  font-weight: 600;
+  margin-top: 12px;
+  page-break-after: avoid;
+}
+
+p {
+  margin: 6px 0;
+  orphans: 3;
+  widows: 3;
+}
+
+/* ── Step numbers (rendered as bold markers) ─────────────── */
+
+/* ── Tables ──────────────────────────────────────────────── */
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 12px 0;
+  font-size: 9.5pt;
+  page-break-inside: auto;
+}
+
+th {
+  background-color: #1E293B;
+  color: white;
+  padding: 8px 10px;
+  text-align: left;
+  font-weight: 600;
+}
+
+td {
+  padding: 6px 10px;
+  border-bottom: 1px solid #E2E8F0;
+  vertical-align: top;
+}
+
+tr {
+  page-break-inside: avoid;
+}
+
+tr:nth-child(even) td {
+  background-color: #F8FAFC;
+}
+
+/* ── Code ────────────────────────────────────────────────── */
+code {
+  background-color: #F1F5F9;
+  padding: 2px 5px;
+  border-radius: 3px;
+  font-size: 9pt;
+  font-family: "SF Mono", Menlo, Monaco, "Courier New", monospace;
+}
+
+pre {
+  background-color: #1E1E2E;
+  border: 1px solid #383850;
+  border-radius: 6px;
+  padding: 14px 16px;
+  font-size: 8.5pt;
+  line-height: 1.45;
+  page-break-inside: avoid;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+  color: #CDD6F4;
+}
+
+pre code {
+  background: none;
+  padding: 0;
+  font-size: inherit;
+  color: inherit;
+}
+
+/* ── Blockquotes (tips / notes) ──────────────────────────── */
+blockquote {
+  border-left: 4px solid #7C3AED;
+  margin: 16px 0;
+  padding: 8px 16px;
+  background: #F5F3FF;
+  font-size: 9.5pt;
+  page-break-inside: avoid;
+}
+
+blockquote p {
+  margin: 4px 0;
+}
+
+/* ── Images ──────────────────────────────────────────────── */
+img {
+  max-width: 100%;
+  max-height: 680px;
+  height: auto;
+  width: auto;
+  display: block;
+  margin: 8px auto;
+  object-fit: contain;
+  page-break-inside: avoid;
+}
+
+/* ── Lists ───────────────────────────────────────────────── */
+ul, ol {
+  margin: 6px 0;
+  padding-left: 22px;
+}
+
+li {
+  margin: 3px 0;
+}
+
+li > ul, li > ol {
+  margin: 2px 0;
+}
+
+/* ── Horizontal rules ────────────────────────────────────── */
+hr {
+  border: none;
+  border-top: 1px solid #E2E8F0;
+  margin: 16px 0;
+}
+
+/* ── Links ───────────────────────────────────────────────── */
+a {
+  color: #7C3AED;
+  text-decoration: none;
+}
+
+/* ── Strong / emphasis ───────────────────────────────────── */
+strong {
+  color: #2D2D2D;
+}
+
+em {
+  color: #555;
+}
+
+/* ── Smart page breaks ───────────────────────────────────── */
+h3 + table,
+h3 + p,
+h3 + pre,
+h4 + ol,
+h4 + ul,
+h4 + p,
+h4 + pre {
+  page-break-before: avoid;
+}
+
+h1 + blockquote {
+  page-break-before: avoid;
+}
+
+h3 + table {
+  page-break-inside: avoid;
+}
+
+section {
+  page-break-inside: auto;
+}

@@ -15,7 +15,7 @@ Use `cody-switch` as the source of truth for feature context management.
 - Prefer the human-readable command output unless you need to make a decision from structured data.
 - Use `--json` when routing depends on the result.
 - Worktree features should be opened in a fresh Codex session: `cd $(cody-switch open <name>) && codex`.
-- After a classic switch, remind the user that `AGENTS.md` and `tasks/` changed on disk and that a fresh Codex session is recommended if they switched mid-session.
+- After a classic switch, default to recommending a fresh `codex` session because `AGENTS.md` and `tasks/` changed on disk. Continue in the current session only when the user clearly wants to bridge prior context into the new feature.
 - Session restore guidance must use `codex resume <id>` and `codex fork <id>`.
 - There is no Codex equivalent of the Claude slash-command install surface. If a bundled prompt is helpful, use `cody-switch prompt <name>`.
 

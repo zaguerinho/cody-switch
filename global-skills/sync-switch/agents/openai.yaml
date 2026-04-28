@@ -1,0 +1,4 @@
+interface:
+  display_name: "Sync Switch"
+  short_description: "Port upstream claude-switch changes into cody-switch."
+  default_prompt: "Check ~/scripts/claude-switch for new commits, decide what applies to cody-switch, port Codex-native changes, and update the upstream sync state."
