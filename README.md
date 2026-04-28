@@ -59,11 +59,14 @@ cody-switch help
 2. seeds `~/AGENTS.md` from `global-agents.md` if needed
 3. installs zsh completion for `cody-switch`
 4. installs core skills to `~/.codex/skills/`
-5. optionally installs extra skills with `--extras` or `--skill`
+5. installs companion binaries to `~/.codex/bin/` when a skill declares one
+6. optionally installs extra skills with `--extras` or `--skill`
 
 If the installer uses the `~/.local/bin` fallback and that directory is not on `PATH`, it prints the shell line to add.
 
 If `~/AGENTS.md` already exists and differs, the new template is written to `~/AGENTS.md.template-pending` for manual merge.
+
+Companion binaries are downloaded from GitHub Releases when available. If no matching release exists and a local source tree is present, the installer falls back to `make build` and copies the result to `~/.codex/bin/`.
 
 ## Quick Start
 
@@ -81,6 +84,13 @@ cody-switch auth-system --with payment-flow
 
 cody-switch current
 cody-switch save
+```
+
+For parallel work, prefer worktree-backed features:
+
+```bash
+cody-switch blank payment-flow --worktree
+cd "$(cody-switch open payment-flow)" && codex
 ```
 
 ## Core Commands
@@ -169,6 +179,7 @@ Use:
 cody-switch prompt list
 cody-switch prompt code-review
 cody-switch prompt security-scan
+cody-switch prompt handoff
 ```
 
 These are not auto-installed into Codex because Codex does not expose the same slash-command install surface as Claude.
@@ -181,12 +192,16 @@ Optional extras in `global-skills-extra/` are opt-in. Some extras are still lega
 
 The `sync-switch` core skill documents the maintenance workflow for checking `~/scripts/claude-switch`, deciding which upstream changes apply, porting them into `cody-switch`, and updating `docs/upstream/claude-switch-sync.md`.
 
+`agent-hub` is treated as a shared, agent-agnostic companion tool. The Codex-facing integration is the `hub` skill; upstream dashboard/server changes should not be duplicated here unless this repo intentionally owns that shared component.
+
 ## Development
 
 ```bash
+make bootstrap-dev
 make test
 ```
 
 That runs:
+- `make check-dev-deps`
 - `shellcheck --severity=error cody-switch`
 - `bats test/`

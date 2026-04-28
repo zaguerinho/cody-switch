@@ -204,13 +204,13 @@ Open a terminal for each ticket:
 
   Terminal 1: ELEM-101 — Auth middleware refactor
     cd $(cody-switch open ELEM-101)
-    claude
-    # Then run: /jira-process ELEM-101
+    codex
+    # Then run the project ticket-processing prompt/skill for ELEM-101
 
   Terminal 2: ELEM-102 — Payment validation rules
     cd $(cody-switch open ELEM-102)
-    claude
-    # Then run: /jira-process ELEM-102
+    codex
+    # Then run the project ticket-processing prompt/skill for ELEM-102
 
 Monitor progress:  /jira-status
 Advance to wave 2: /jira-batch --next

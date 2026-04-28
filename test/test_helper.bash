@@ -1,7 +1,7 @@
 # test_helper.bash — shared setup/teardown for cody-switch bats tests
 
 # Absolute path to the script under test
-CLAUDE_SWITCH="$(cd "$BATS_TEST_DIRNAME/.." && pwd)/cody-switch"
+CODY_SWITCH_BIN="$(cd "$BATS_TEST_DIRNAME/.." && pwd)/cody-switch"
 
 # Strip ANSI color codes from output
 strip_ansi() {

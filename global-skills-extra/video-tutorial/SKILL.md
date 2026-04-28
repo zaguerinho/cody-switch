@@ -1,15 +1,21 @@
 ---
 name: video-tutorial
 description: >
-  Generate narrated eLearning screencast tutorials as self-contained HTML files.
+  Legacy optional extra for narrated eLearning screencast tutorials as
+  self-contained HTML files.
   Use when the user says "/video-tutorial", "create tutorial", "screencast",
   or wants to generate a code walkthrough with narrated audio.
-  Requires Codex CLI. TTS via Piper (free/local) or ElevenLabs (cloud).
+  Runs from Codex, but manifest generation currently still requires Claude CLI.
+  TTS via Piper (free/local) or ElevenLabs (cloud).
 ---
 
-# /video-tutorial
+# video-tutorial (legacy extra)
 
 Generate a narrated eLearning screencast tutorial as a self-contained HTML file.
+
+This extra is not fully Codex-native yet. The wrapper and install location are
+Codex-oriented, but the manifest-generation backend still shells out to the
+Claude CLI inherited from the upstream project.
 
 ## Usage
 
@@ -38,8 +44,8 @@ If no topic is provided and not `--assemble-only`, ask:
 Check that required tools are available:
 
 ```bash
-# Check Claude CLI (used for manifest generation)
-which claude
+# Check legacy Claude CLI dependency (used for manifest generation)
+command -v claude
 
 # Check TTS backend
 which piper       # Free/local option
@@ -62,7 +68,8 @@ export ELEVENLABS_API_KEY=your-key
 export ELEVENLABS_VOICE_ID=your-voice-id
 ```
 
-**No ANTHROPIC_API_KEY needed** — manifest generation uses the Claude CLI directly.
+No `ANTHROPIC_API_KEY` is needed for manifest generation because this legacy
+extra uses the Claude CLI directly.
 
 Stop here if validation fails. Do not proceed without at least one TTS backend.
 
@@ -88,7 +95,7 @@ Check for the installed binary first, then fall back to the repo copy:
 
 ```bash
 # Check installed location (from cody-switch install --extras)
-TUTORIAL_BIN="$HOME/.claude/bin/video-tutorial"
+TUTORIAL_BIN="$HOME/.codex/bin/video-tutorial"
 if [ ! -x "$TUTORIAL_BIN" ]; then
   # Fall back to repo location
   SCRIPT_DIR="$(dirname "$(readlink -f "$(command -v cody-switch)")")"
@@ -167,7 +174,7 @@ Wait for user confirmation before running the build. If they say no, stop.
 
 ### Step 8: Run the build
 
-Always pass `-y` to skip the binary's own interactive prompts (Claude handles them above).
+Always pass `-y` to skip the binary's own interactive prompts (Codex handles them above).
 
 **ElevenLabs:**
 ```bash
@@ -198,7 +205,7 @@ cd <project-root>
 ```
 
 Stream the stderr output to the user so they can see progress:
-- Manifest generation (via Claude CLI)
+- Manifest generation (via legacy Claude CLI)
 - Per-segment audio synthesis
 - HTML assembly
 
@@ -280,4 +287,4 @@ No server required. Works offline. Shareable as a single file.
 - **No CDN calls** — everything is inlined (CSS, JS, audio, code)
 - **Fail loudly** — if a cue references a missing file or invalid line range, the build crashes with a clear error. Never produce a broken tutorial silently.
 - **Chatbot is optional** — if the viewer doesn't set an API key in their browser, the chatbot prompts for one instead of crashing
-- **No ANTHROPIC_API_KEY needed** — manifest generation uses Claude CLI, not the API directly
+- **No ANTHROPIC_API_KEY needed** — manifest generation uses the legacy Claude CLI, not the API directly

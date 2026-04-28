@@ -19,7 +19,7 @@ setup_fresh_repo() {
 
 @test "init creates .codex/features/ and AGENTS.md on fresh repo" {
     setup_fresh_repo
-    run "$CLAUDE_SWITCH" init
+    run "$CODY_SWITCH_BIN" init
     [ "$status" -eq 0 ]
     [ -d .codex/features ]
     [ -f AGENTS.md ]
@@ -30,7 +30,7 @@ setup_fresh_repo() {
 @test "init detects node stack from package.json" {
     setup_fresh_repo
     echo '{"name": "test"}' > package.json
-    run "$CLAUDE_SWITCH" init
+    run "$CODY_SWITCH_BIN" init
     [ "$status" -eq 0 ]
     grep -q "Node.js" AGENTS.md
 }
@@ -39,7 +39,7 @@ setup_fresh_repo() {
     setup_fresh_repo
     echo '{"name": "test"}' > package.json
     echo '{}' > tsconfig.json
-    run "$CLAUDE_SWITCH" init
+    run "$CODY_SWITCH_BIN" init
     [ "$status" -eq 0 ]
     grep -q "TypeScript" AGENTS.md
 }
@@ -47,7 +47,7 @@ setup_fresh_repo() {
 @test "init detects python stack from pyproject.toml" {
     setup_fresh_repo
     echo '[project]' > pyproject.toml
-    run "$CLAUDE_SWITCH" init
+    run "$CODY_SWITCH_BIN" init
     [ "$status" -eq 0 ]
     grep -q "Python" AGENTS.md
 }
@@ -55,7 +55,7 @@ setup_fresh_repo() {
 @test "init detects go stack from go.mod" {
     setup_fresh_repo
     echo 'module example.com/test' > go.mod
-    run "$CLAUDE_SWITCH" init
+    run "$CODY_SWITCH_BIN" init
     [ "$status" -eq 0 ]
     grep -q "Go" AGENTS.md
 }
@@ -64,7 +64,7 @@ setup_fresh_repo() {
     setup_fresh_repo
     echo '{"name": "test"}' > package.json
     echo 'module.exports = {}' > jest.config.js
-    run "$CLAUDE_SWITCH" init
+    run "$CODY_SWITCH_BIN" init
     [ "$status" -eq 0 ]
     grep -q "npm test" AGENTS.md
 }
@@ -73,7 +73,7 @@ setup_fresh_repo() {
     setup_fresh_repo
     echo '[project]' > pyproject.toml
     touch conftest.py
-    run "$CLAUDE_SWITCH" init
+    run "$CODY_SWITCH_BIN" init
     [ "$status" -eq 0 ]
     grep -q "pytest" AGENTS.md
 }
@@ -82,14 +82,14 @@ setup_fresh_repo() {
     setup_fresh_repo
     mkdir -p test
     echo '#!/usr/bin/env bats' > test/example.bats
-    run "$CLAUDE_SWITCH" init
+    run "$CODY_SWITCH_BIN" init
     [ "$status" -eq 0 ]
     grep -q "bats" AGENTS.md
 }
 
 @test "init adds .gitignore entries" {
     setup_fresh_repo
-    run "$CLAUDE_SWITCH" init
+    run "$CODY_SWITCH_BIN" init
     [ "$status" -eq 0 ]
     [ -f .gitignore ]
     grep -qxF ".codex-current-feature" .gitignore
@@ -102,7 +102,7 @@ setup_fresh_repo() {
     setup_fresh_repo
     echo ".codex-current-feature" > .gitignore
     echo "tasks/" >> .gitignore
-    run "$CLAUDE_SWITCH" init
+    run "$CODY_SWITCH_BIN" init
     [ "$status" -eq 0 ]
     # Should not have duplicates
     local count
@@ -117,12 +117,12 @@ setup_fresh_repo() {
 
 @test "init warns if already initialized" {
     setup_fresh_repo
-    run "$CLAUDE_SWITCH" init
+    run "$CODY_SWITCH_BIN" init
     [ "$status" -eq 0 ]
     # Create a feature so the guard triggers
     mkdir -p .codex/features/some-feature
     echo "# test" > .codex/features/some-feature/AGENTS.md
-    run "$CLAUDE_SWITCH" init
+    run "$CODY_SWITCH_BIN" init
     [ "$status" -eq 0 ]
     local clean
     clean="$(echo "$output" | strip_ansi)"
@@ -132,7 +132,7 @@ setup_fresh_repo() {
 @test "init --template overrides auto-detection" {
     setup_fresh_repo
     echo '{"name": "test"}' > package.json
-    run "$CLAUDE_SWITCH" init --template go
+    run "$CODY_SWITCH_BIN" init --template go
     [ "$status" -eq 0 ]
     # Should show Go, not Node.js
     grep -q "Go" AGENTS.md
@@ -141,10 +141,10 @@ setup_fresh_repo() {
 
 @test "init --force reinitializes with backup" {
     setup_fresh_repo
-    run "$CLAUDE_SWITCH" init
+    run "$CODY_SWITCH_BIN" init
     [ "$status" -eq 0 ]
     echo "custom content" >> AGENTS.md
-    run "$CLAUDE_SWITCH" init --force
+    run "$CODY_SWITCH_BIN" init --force
     [ "$status" -eq 0 ]
     # Backup should exist
     local backups

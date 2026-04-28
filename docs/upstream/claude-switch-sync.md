@@ -73,14 +73,15 @@ f3aaa9b feat(agent-hub): add dashboard message search and paging
   newer upstream CLI concepts: `doctor`, deep `health`, project room binding,
   `room bootstrap`, optional bound-room arguments, `rename`, and dashboard
   improvements.
-- `4ceebbe`: Deferred. The upstream `handoff.md` command is Claude/path-coupled
-  (`.claude/handoff`, slash-command semantics, reviewer-ask conventions). It
-  should become a separate Codex-native prompt/skill only after deciding the
-  target storage layout, likely `.codex/handoff`.
+- `4ceebbe`: Ported as a Codex-native prompt template instead of copying the
+  upstream command. The cody-switch version uses `.codex/handoff`, avoids
+  Claude slash-command assumptions, and only applies reviewer-ask closers when
+  a topic protocol explicitly defines that convention.
 
 ## Follow-Up Files Updated In cody-switch
 
 - `global-skills/hub/SKILL.md`
+- `global-commands/handoff.md`
 - `docs/upstream/claude-switch-sync.md`
 
 ## Next Sync

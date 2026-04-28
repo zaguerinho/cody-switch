@@ -12,7 +12,7 @@ load test_helper
     mkdir -p .codex/features/healthy
     echo "# Healthy" > .codex/features/healthy/AGENTS.md
 
-    run "$CLAUDE_SWITCH" doctor
+    run "$CODY_SWITCH_BIN" doctor
     [ "$status" -eq 0 ]
     local cleaned
     cleaned=$(echo "$output" | strip_ansi)
@@ -26,7 +26,7 @@ load test_helper
     mkdir -p .codex/features/lost-feat
     echo "abc123" > .codex/features/lost-feat/session
 
-    run "$CLAUDE_SWITCH" doctor
+    run "$CODY_SWITCH_BIN" doctor
     local cleaned
     cleaned=$(echo "$output" | strip_ansi)
     [[ "$cleaned" == *"lost-feat"* ]]
@@ -39,7 +39,7 @@ load test_helper
     mkdir -p .codex/features/empty-feat
     touch .codex/features/empty-feat/AGENTS.md
 
-    run "$CLAUDE_SWITCH" doctor
+    run "$CODY_SWITCH_BIN" doctor
     local cleaned
     cleaned=$(echo "$output" | strip_ansi)
     [[ "$cleaned" == *"empty-feat"* ]]
@@ -53,7 +53,7 @@ load test_helper
     mkdir -p .codex/features/fix-me
     echo "abc123" > .codex/features/fix-me/session
 
-    run "$CLAUDE_SWITCH" doctor --fix
+    run "$CODY_SWITCH_BIN" doctor --fix
     [ "$status" -eq 0 ]
 
     [ -f .codex/features/fix-me/AGENTS.md ]
@@ -78,7 +78,7 @@ load test_helper
     echo "# Active context" > AGENTS.md
     echo "- [ ] active task" > tasks/todo.md
 
-    run bash -c 'echo "y" | "$1" merge merge-src' -- "$CLAUDE_SWITCH"
+    run bash -c 'echo "y" | "$1" merge merge-src' -- "$CODY_SWITCH_BIN"
     [ "$status" -eq 0 ]
 
     # Root AGENTS.md should have both contents
@@ -94,7 +94,7 @@ load test_helper
     cd "$REPO"
 
     # Try to merge the active feature
-    run bash -c 'echo "y" | "$1" merge test-active' -- "$CLAUDE_SWITCH"
+    run bash -c 'echo "y" | "$1" merge test-active' -- "$CODY_SWITCH_BIN"
     [ "$status" -ne 0 ]
     local cleaned
     cleaned=$(echo "$output" | strip_ansi)
@@ -108,7 +108,7 @@ load test_helper
     mkdir -p .codex/features/self-merge
     echo "# Self" > .codex/features/self-merge/AGENTS.md
 
-    run bash -c 'echo "y" | "$1" merge self-merge into self-merge' -- "$CLAUDE_SWITCH"
+    run bash -c 'echo "y" | "$1" merge self-merge into self-merge' -- "$CODY_SWITCH_BIN"
     [ "$status" -ne 0 ]
     local cleaned
     cleaned=$(echo "$output" | strip_ansi)
@@ -123,7 +123,7 @@ load test_helper
 
     echo "# Active" > AGENTS.md
 
-    run bash -c 'echo "y" | "$1" merge del-src --delete' -- "$CLAUDE_SWITCH"
+    run bash -c 'echo "y" | "$1" merge del-src --delete' -- "$CODY_SWITCH_BIN"
     [ "$status" -eq 0 ]
 
     # Source should be completely gone (not archived)
@@ -149,7 +149,7 @@ load test_helper
     echo "todo" > .codex/features/target-feat/tasks/todo.md
     echo "lessons" > .codex/features/target-feat/tasks/lessons.md
 
-    run "$CLAUDE_SWITCH" target-feat --with ref-feat
+    run "$CODY_SWITCH_BIN" target-feat --with ref-feat
     [ "$status" -eq 0 ]
 
     # AGENTS.md should contain reference markers
@@ -181,7 +181,7 @@ EOF
     echo "todo" > .codex/features/clean-target/tasks/todo.md
     echo "lessons" > .codex/features/clean-target/tasks/lessons.md
 
-    run "$CLAUDE_SWITCH" clean-target
+    run "$CODY_SWITCH_BIN" clean-target
     [ "$status" -eq 0 ]
 
     # Saved version of previous feature should NOT contain ref markers
@@ -218,7 +218,7 @@ EOF
     echo "todo" > .codex/features/strip-target/tasks/todo.md
     echo "lessons" > .codex/features/strip-target/tasks/lessons.md
 
-    run "$CLAUDE_SWITCH" strip-target
+    run "$CODY_SWITCH_BIN" strip-target
     [ "$status" -eq 0 ]
 
     # Saved AGENTS.md should have no reference markers
@@ -250,7 +250,7 @@ EOF
     echo "legacy task" > tasks.old-feat/todo.md
 
     # Any command that touches features should trigger migration
-    run "$CLAUDE_SWITCH" list
+    run "$CODY_SWITCH_BIN" list
     [ "$status" -eq 0 ]
 
     # Legacy files should be migrated
@@ -276,13 +276,13 @@ EOF
     echo "lessons" > .codex/features/beta/tasks/lessons.md
 
     # Get list to see numbering
-    run "$CLAUDE_SWITCH" list
+    run "$CODY_SWITCH_BIN" list
     [ "$status" -eq 0 ]
 
     # Find which number alpha is (features sorted alphabetically)
     # alpha should be first non-active feature or early in the list
     # Switch by number 1 — should resolve to a valid feature
-    run "$CLAUDE_SWITCH" 1
+    run "$CODY_SWITCH_BIN" 1
     [ "$status" -eq 0 ]
 
     # Should have switched to some feature
@@ -295,7 +295,7 @@ EOF
     mkdir -p subdir/deep
     cd subdir/deep
 
-    run "$CLAUDE_SWITCH" list
+    run "$CODY_SWITCH_BIN" list
     [ "$status" -eq 0 ]
     local cleaned
     cleaned=$(echo "$output" | strip_ansi)
@@ -309,7 +309,7 @@ EOF
     mkdir -p .codex/features/broken-feat
     echo "abc123" > .codex/features/broken-feat/session
 
-    run "$CLAUDE_SWITCH" broken-feat
+    run "$CODY_SWITCH_BIN" broken-feat
     [ "$status" -eq 0 ]
 
     # Should have created a scaffold AGENTS.md at root

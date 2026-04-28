@@ -39,15 +39,16 @@ model is:
 
 ### Full Shell Test Verification Depends On Local Tooling
 
-The root `make test` target requires `shellcheck` and `bats`. If those tools are
-missing, only partial local verification is possible. CI should remain the
-authoritative cross-platform check.
+The root `make test` target requires `shellcheck` and `bats`. Use
+`make bootstrap-dev` to install them on common macOS/Linux environments. CI
+should remain the authoritative cross-platform check.
 
 ### Optional Companion Binaries Are Not Fully Productized
 
-The `hub` skill declares a companion `agent-hub` binary, but installation can
-only download it when a matching GitHub release artifact exists. Until then,
-users must build it from source with:
+The `hub` skill declares a companion `agent-hub` binary. Installation now
+downloads a matching GitHub release when available and falls back to local
+`make build` when the source tree exists. Release artifacts are still worth
+publishing for faster installs.
 
 ```bash
 cd ~/scripts/cody-switch/agent-hub && make build
@@ -55,9 +56,9 @@ cd ~/scripts/cody-switch/agent-hub && make build
 
 ### `video-tutorial` Is Still Legacy
 
-The `video-tutorial` extra remains opt-in and still contains inherited
-Claude-coupled behavior. Treat it as legacy until it is explicitly reworked for
-Codex.
+The `video-tutorial` extra remains opt-in and is now explicitly marked as
+legacy. Its install path is Codex-native, but manifest generation still depends
+on the legacy Claude CLI backend.
 
 ### Feature Switching Still Mutates Root Context
 
@@ -103,6 +104,6 @@ For day-to-day use, `cody-switch` is ready for:
 Before broader release, the highest-value hardening work is:
 
 - keep CI green on macOS and Linux
-- build/publish `agent-hub` release artifacts
-- remove or clearly label remaining Claude-coupled legacy extra behavior
+- build/publish companion binary release artifacts for faster installs
+- fully rework or replace the legacy `video-tutorial` backend
 - continue moving reusable workflows into Codex skills

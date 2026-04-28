@@ -27,7 +27,7 @@ get_bool() {
 # =============================================================================
 
 @test "current --json outputs valid JSON with feature and branch" {
-    run "$CLAUDE_SWITCH" current --json
+    run "$CODY_SWITCH_BIN" current --json
     [ "$status" -eq 0 ]
     assert_valid_json
     local feat
@@ -42,7 +42,7 @@ get_bool() {
     # Create a second feature
     mkdir -p .codex/features/other-feat
     echo "# Other" > .codex/features/other-feat/AGENTS.md
-    run "$CLAUDE_SWITCH" list --json
+    run "$CODY_SWITCH_BIN" list --json
     [ "$status" -eq 0 ]
     assert_valid_json
     local cmd
@@ -63,7 +63,7 @@ assert len(d['features']) >= 1, 'should have at least 1 feature'
     git init -q && echo "# Test" > README.md && git add . && git commit -q -m "init"
     echo '{"name":"test"}' > package.json
     echo '{}' > tsconfig.json
-    run "$CLAUDE_SWITCH" init --json
+    run "$CODY_SWITCH_BIN" init --json
     [ "$status" -eq 0 ]
     assert_valid_json
     local stack
@@ -72,7 +72,7 @@ assert len(d['features']) >= 1, 'should have at least 1 feature'
 }
 
 @test "blank --json creates feature and returns JSON" {
-    run "$CLAUDE_SWITCH" blank json-test-feat --json
+    run "$CODY_SWITCH_BIN" blank json-test-feat --json
     [ "$status" -eq 0 ]
     assert_valid_json
     local feat
@@ -86,7 +86,7 @@ assert len(d['features']) >= 1, 'should have at least 1 feature'
     # Create a feature to archive
     mkdir -p .codex/features/to-archive
     echo "# Archive me" > .codex/features/to-archive/AGENTS.md
-    run "$CLAUDE_SWITCH" archive to-archive --json
+    run "$CODY_SWITCH_BIN" archive to-archive --json
     [ "$status" -eq 0 ]
     assert_valid_json
     local cmd
@@ -98,7 +98,7 @@ assert len(d['features']) >= 1, 'should have at least 1 feature'
     # Create and archive a feature
     mkdir -p .codex/features/archived/to-unarch
     echo "# Unarchive me" > .codex/features/archived/to-unarch/AGENTS.md
-    run "$CLAUDE_SWITCH" unarchive to-unarch --json
+    run "$CODY_SWITCH_BIN" unarchive to-unarch --json
     [ "$status" -eq 0 ]
     assert_valid_json
     local cmd
@@ -107,7 +107,7 @@ assert len(d['features']) >= 1, 'should have at least 1 feature'
 }
 
 @test "peek --json returns content" {
-    run "$CLAUDE_SWITCH" peek test-active --json
+    run "$CODY_SWITCH_BIN" peek test-active --json
     [ "$status" -eq 0 ]
     assert_valid_json
     local status_field
@@ -125,7 +125,7 @@ assert len(d['content']) > 0, 'content should not be empty'
     # Create a feature to delete
     mkdir -p .codex/features/to-delete
     echo "# Delete me" > .codex/features/to-delete/AGENTS.md
-    run "$CLAUDE_SWITCH" delete to-delete --json
+    run "$CODY_SWITCH_BIN" delete to-delete --json
     [ "$status" -eq 0 ]
     assert_valid_json
     local cmd
@@ -136,7 +136,7 @@ assert len(d['content']) > 0, 'content should not be empty'
 }
 
 @test "doctor --json returns features and summary" {
-    run "$CLAUDE_SWITCH" doctor --json
+    run "$CODY_SWITCH_BIN" doctor --json
     [ "$status" -eq 0 ]
     assert_valid_json
     echo "$output" | python3 -c "
@@ -152,7 +152,7 @@ assert 'issues' in d, 'should have issues'
     # Create a target feature to switch to
     mkdir -p .codex/features/switch-target
     echo "# Switch target" > .codex/features/switch-target/AGENTS.md
-    run "$CLAUDE_SWITCH" switch-target --json
+    run "$CODY_SWITCH_BIN" switch-target --json
     [ "$status" -eq 0 ]
     assert_valid_json
     local cmd
@@ -164,7 +164,7 @@ assert 'issues' in d, 'should have issues'
 }
 
 @test "fork --json returns source and target" {
-    run "$CLAUDE_SWITCH" fork test-active json-fork-test --json
+    run "$CODY_SWITCH_BIN" fork test-active json-fork-test --json
     [ "$status" -eq 0 ]
     assert_valid_json
     local cmd
@@ -176,7 +176,7 @@ assert 'issues' in d, 'should have issues'
 }
 
 @test "error in --json mode outputs JSON error" {
-    run "$CLAUDE_SWITCH" archive --json
+    run "$CODY_SWITCH_BIN" archive --json
     [ "$status" -ne 0 ]
     assert_valid_json
     local success
@@ -191,19 +191,19 @@ assert len(d.get('error','')) > 0, 'should have error message'
 }
 
 @test "--json flag works in any position" {
-    run "$CLAUDE_SWITCH" --json current
+    run "$CODY_SWITCH_BIN" --json current
     [ "$status" -eq 0 ]
     assert_valid_json
 }
 
 @test "--output=json is equivalent to --json" {
-    run "$CLAUDE_SWITCH" current --output=json
+    run "$CODY_SWITCH_BIN" current --output=json
     [ "$status" -eq 0 ]
     assert_valid_json
 }
 
 @test "text output is default (no JSON)" {
-    run "$CLAUDE_SWITCH" current
+    run "$CODY_SWITCH_BIN" current
     [ "$status" -eq 0 ]
     # Should NOT be valid JSON (has ANSI codes, human text)
     if echo "$output" | python3 -c "import json,sys; json.load(sys.stdin)" 2>/dev/null; then
@@ -221,7 +221,7 @@ assert len(d.get('error','')) > 0, 'should have error message'
     mkdir -p tasks
     echo "- [ ] json task" > tasks/todo.md
     mkdir -p .codex/features
-    run "$CLAUDE_SWITCH" new my-new-feat --json
+    run "$CODY_SWITCH_BIN" new my-new-feat --json
     [ "$status" -eq 0 ]
     assert_valid_json
     local feat

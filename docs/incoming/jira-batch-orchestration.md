@@ -14,7 +14,7 @@ The key insight: the orchestration layer **thinks before spawning**. Instead of 
 
 1. User runs `/jira-batch PROJ-101 PROJ-102 PROJ-103`
 2. The skill fetches all three tickets from Jira (title, description, acceptance criteria)
-3. For each ticket, it analyzes the codebase to predict affected file areas (using the same investigation that `/init-feature` does, but lighter — just area prediction, not full CLAUDE.md generation)
+3. For each ticket, it analyzes the codebase to predict affected file areas (using the same investigation that `/init-feature` does, but lighter — just area prediction, not full AGENTS.md generation)
 4. It builds a conflict matrix: which tickets overlap in predicted file areas
 5. It presents a wave plan:
    ```
@@ -23,8 +23,8 @@ The key insight: the orchestration layer **thinks before spawning**. Instead of 
    ```
 6. User approves (or edits the plan)
 7. For each ticket in wave 1:
-   - Creates a worktree feature: `claude-switch blank PROJ-101 --worktree`
-   - Writes initial state to `.claude/batch/PROJ-101.json`
+   - Creates a worktree feature: `cody-switch blank PROJ-101 --worktree`
+   - Writes initial state to `.codex/batch/PROJ-101.json`
    - Tells the user which terminal to open and what to run
 8. User opens terminals, runs `/jira-process PROJ-101` in each worktree
 9. User runs `/jira-status` at any time to see progress across all tickets
@@ -33,12 +33,12 @@ The key insight: the orchestration layer **thinks before spawning**. Instead of 
 ## Data & Dependencies
 
 - **Jira API access** — already used by `/jira-process` and `/process-issues`
-- **claude-switch worktrees** — already implemented (v2.4.0+)
-- **claude-switch save** — just shipped (v2.5.0) for clean commits from worktrees
+- **cody-switch worktrees** — already implemented (v2.4.0+)
+- **cody-switch save** — just shipped (v2.5.0) for clean commits from worktrees
 - **Codebase analysis** — reuse `/init-feature`'s investigation patterns for area prediction
-- **State storage** — new `.claude/batch/` directory for tracking batch state
+- **State storage** — new `.codex/batch/` directory for tracking batch state
 
-### State Schema (`.claude/batch/{ticket-id}.json`)
+### State Schema (`.codex/batch/{ticket-id}.json`)
 
 ```json
 {
@@ -46,7 +46,7 @@ The key insight: the orchestration layer **thinks before spawning**. Instead of 
   "title": "Refactor auth middleware",
   "wave": 1,
   "status": "in_progress|queued|pr_created|merged|stale|failed",
-  "worktree": ".claude/worktrees/PROJ-101",
+  "worktree": ".codex/worktrees/PROJ-101",
   "feature": "PROJ-101",
   "branch": "worktree-PROJ-101",
   "session_id": "abc123",
@@ -65,7 +65,7 @@ The key insight: the orchestration layer **thinks before spawning**. Instead of 
 
 1. `/jira-batch <ticket-ids...>` — analyze, detect conflicts, produce wave plan
 2. Wave plan creates worktree features automatically
-3. `.claude/batch/` state tracking (JSON files per ticket)
+3. `.codex/batch/` state tracking (JSON files per ticket)
 4. `/jira-status` — read state files, show progress table, detect stale sessions
 5. `/jira-batch --next` — check if current wave is done, prepare next wave
 6. Manual terminal spawning — user opens terminals and runs `/jira-process` themselves
@@ -81,7 +81,7 @@ The key insight: the orchestration layer **thinks before spawning**. Instead of 
 
 ## Future Enhancements
 
-- **Automated spawning (v2):** Use tmux or background Claude sessions to launch agents automatically. `/jira-batch` becomes fully hands-off.
+- **Automated spawning (v2):** Use tmux or background Codex sessions to launch agents automatically. `/jira-batch` becomes fully hands-off.
 - **Live progress streaming:** A `/jira-watch` command that tails all active worktree sessions in a dashboard view.
 - **Smart merge ordering:** After all wave PRs are ready, suggest the optimal merge order to minimize conflicts.
 - **Cross-ticket dependencies:** Read Jira ticket links (blocks/is-blocked-by) and factor them into wave planning.
@@ -97,7 +97,7 @@ The hardest part. Two strategies, used together:
 
 1. **Keyword-to-area mapping:** Parse ticket title/description for domain keywords (auth, payment, user, API) and map to known codebase areas. Fast but imprecise.
 
-2. **AI codebase analysis:** For each ticket, ask Claude to predict which files/directories would need changes. Uses the same pattern as `/init-feature`'s investigation but outputs a list of paths instead of a full CLAUDE.md. More accurate but slower — run in parallel per ticket.
+2. **AI codebase analysis:** For each ticket, ask Codex to predict which files/directories would need changes. Uses the same pattern as `/init-feature`'s investigation but outputs a list of paths instead of a full AGENTS.md. More accurate but slower — run in parallel per ticket.
 
 Conservative approach: if prediction confidence is low, assume conflict and sequence. False sequencing is annoying but safe. False parallelism causes merge hell.
 
@@ -117,15 +117,15 @@ In practice, most batches will be 3-6 tickets, so brute force is fine.
 Each ticket follows: `create → work → pr_created → merged → cleanup`
 
 Cleanup for a ticket means:
-1. `claude-switch archive {ticket}` — syncs worktree to storage, removes worktree dir + branch, moves feature to archived/
-2. Move `.claude/batch/{ticket}.json` to `.claude/batch/done/` (preserves history)
+1. `cody-switch archive {ticket}` — syncs worktree to storage, removes worktree dir + branch, moves feature to archived/
+2. Move `.codex/batch/{ticket}.json` to `.codex/batch/done/` (preserves history)
 
 Cleanup triggers:
 - **`/jira-batch --cleanup`** — explicitly check for merged PRs, archive those features
 - **`/jira-batch --next`** — automatically cleans up merged wave N tickets before preparing wave N+1
 - **`/jira-status`** — detects merged PRs and flags them as ready for cleanup (doesn't auto-clean)
 
-The building blocks already exist: `claude-switch archive` handles worktree removal, and `gh pr view --json state` detects merged PRs. The batch skill just orchestrates the calls.
+The building blocks already exist: `cody-switch archive` handles worktree removal, and `gh pr view --json state` detects merged PRs. The batch skill just orchestrates the calls.
 
 ### Stale Detection
 
@@ -134,7 +134,7 @@ A session is "stale" if:
 - AND status is still `in_progress`
 
 Recovery options:
-- Resume the session: `cd $(claude-switch open PROJ-101) && claude --resume <session_id>`
+- Resume the session: `cd $(cody-switch open PROJ-101) && codex resume <session_id>`
 - Restart from scratch: delete worktree, recreate, re-run
 - Skip and move to next wave
 
@@ -146,7 +146,7 @@ Recovery options:
 
 **The conflict prediction is the make-or-break piece.** Invest time in making it good. A bad predictor that either (a) sequences everything (no parallelism benefit) or (b) misses conflicts (merge hell) defeats the purpose. Start conservative (over-sequence), then loosen as confidence grows.
 
-**Risk:** scope creep toward building a CI/CD system. Keep the boundary clear — this orchestrates Claude sessions working on tickets, it doesn't replace GitHub Actions or deployment pipelines. The output is PRs, not deployed code.
+**Risk:** scope creep toward building a CI/CD system. Keep the boundary clear — this orchestrates Codex sessions working on tickets, it doesn't replace GitHub Actions or deployment pipelines. The output is PRs, not deployed code.
 
 ## Open Questions
 

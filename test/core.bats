@@ -8,14 +8,14 @@ load test_helper
 
 @test "help works outside git repo" {
     cd "$BATS_TEST_TMPDIR"
-    run "$CLAUDE_SWITCH" help
+    run "$CODY_SWITCH_BIN" help
     [ "$status" -eq 0 ]
     [[ "$output" == *"cody-switch"* ]]
 }
 
 @test "fails outside git repo for project commands" {
     cd "$BATS_TEST_TMPDIR"
-    run "$CLAUDE_SWITCH" list
+    run "$CODY_SWITCH_BIN" list
     [ "$status" -ne 0 ]
     [[ "$output" == *"Not inside a git repository"* ]]
 }
@@ -31,7 +31,7 @@ load test_helper
     echo "modified" >> README.md
     git add README.md
 
-    run "$CLAUDE_SWITCH" other
+    run "$CODY_SWITCH_BIN" other
     [ "$status" -ne 0 ]
     local cleaned
     cleaned=$(echo "$output" | strip_ansi)
@@ -55,7 +55,7 @@ load test_helper
     echo "- [ ] target task" > .codex/features/target-feat/tasks/todo.md
     echo "## Lessons" > .codex/features/target-feat/tasks/lessons.md
 
-    run "$CLAUDE_SWITCH" target-feat
+    run "$CODY_SWITCH_BIN" target-feat
     [ "$status" -eq 0 ]
 
     # Source data should be saved to storage
@@ -74,7 +74,7 @@ load test_helper
     echo "- [ ] target task" > .codex/features/target-feat/tasks/todo.md
     echo "## Lessons" > .codex/features/target-feat/tasks/lessons.md
 
-    run "$CLAUDE_SWITCH" target-feat
+    run "$CODY_SWITCH_BIN" target-feat
     [ "$status" -eq 0 ]
 
     # Target data should be at project root
@@ -99,11 +99,11 @@ load test_helper
     echo "## Lessons" > .codex/features/feat-b/tasks/lessons.md
 
     # Switch A -> B
-    run "$CLAUDE_SWITCH" feat-b
+    run "$CODY_SWITCH_BIN" feat-b
     [ "$status" -eq 0 ]
 
     # Switch B -> A
-    run "$CLAUDE_SWITCH" feat-a
+    run "$CODY_SWITCH_BIN" feat-a
     [ "$status" -eq 0 ]
 
     # Feature A data should be back at root
@@ -122,7 +122,7 @@ load test_helper
     echo "# Target" > .codex/features/target-feat/AGENTS.md
 
     # Pipe "skip" to stdin so the save prompt is skipped
-    run bash -c 'echo "" | "$1" target-feat' -- "$CLAUDE_SWITCH"
+    run bash -c 'echo "" | "$1" target-feat' -- "$CODY_SWITCH_BIN"
 
     # Root AGENTS.md should now be the target's content (we didn't save)
     [[ "$(cat AGENTS.md)" == *"Target"* ]]
@@ -145,7 +145,7 @@ load test_helper
     echo "# With Session" > .codex/features/with-session/AGENTS.md
     echo "abc123" > .codex/features/with-session/session
 
-    run "$CLAUDE_SWITCH" list
+    run "$CODY_SWITCH_BIN" list
     [ "$status" -eq 0 ]
     local cleaned
     cleaned=$(echo "$output" | strip_ansi)
@@ -163,7 +163,7 @@ load test_helper
     rm -f .codex-current-feature
     rm -f AGENTS.md
 
-    run "$CLAUDE_SWITCH" list
+    run "$CODY_SWITCH_BIN" list
     # Should not error — just show empty or "no features" message
     [ "$status" -eq 0 ]
 }
@@ -171,7 +171,7 @@ load test_helper
 @test "blank creates feature dir and docs folder" {
     cd "$REPO"
 
-    run bash -c 'echo "n" | "$1" blank new-feat' -- "$CLAUDE_SWITCH"
+    run bash -c 'echo "n" | "$1" blank new-feat' -- "$CODY_SWITCH_BIN"
     [ "$status" -eq 0 ]
 
     [ -d .codex/features/new-feat ]
@@ -182,7 +182,7 @@ load test_helper
 @test "blank rejects reserved name archived" {
     cd "$REPO"
 
-    run bash -c 'echo "n" | "$1" blank archived' -- "$CLAUDE_SWITCH"
+    run bash -c 'echo "n" | "$1" blank archived' -- "$CODY_SWITCH_BIN"
     [ "$status" -ne 0 ]
     local cleaned
     cleaned=$(echo "$output" | strip_ansi)
@@ -195,7 +195,7 @@ load test_helper
     mkdir -p .codex/features/existing
     echo "# Existing" > .codex/features/existing/AGENTS.md
 
-    run bash -c 'echo "n" | "$1" blank existing' -- "$CLAUDE_SWITCH"
+    run bash -c 'echo "n" | "$1" blank existing' -- "$CODY_SWITCH_BIN"
     [ "$status" -ne 0 ]
     local cleaned
     cleaned=$(echo "$output" | strip_ansi)
@@ -205,7 +205,7 @@ load test_helper
 @test "blank --branch creates git branch" {
     cd "$REPO"
 
-    run bash -c 'echo "n" | "$1" blank branch-feat --branch' -- "$CLAUDE_SWITCH"
+    run bash -c 'echo "n" | "$1" blank branch-feat --branch' -- "$CODY_SWITCH_BIN"
     [ "$status" -eq 0 ]
 
     # Branch should exist
@@ -216,7 +216,7 @@ load test_helper
 @test "blank --workflow seeds from workflow.md template" {
     cd "$REPO"
 
-    run bash -c 'echo "n" | "$1" blank wf-feat --workflow' -- "$CLAUDE_SWITCH"
+    run bash -c 'echo "n" | "$1" blank wf-feat --workflow' -- "$CODY_SWITCH_BIN"
     [ "$status" -eq 0 ]
 
     # AGENTS.md should contain workflow template content
@@ -229,18 +229,18 @@ load test_helper
 
     # Set up source feature
     mkdir -p .codex/features/source-feat/tasks
-    echo "# Source CLAUDE" > .codex/features/source-feat/AGENTS.md
+    echo "# Source AGENTS" > .codex/features/source-feat/AGENTS.md
     echo "- [ ] source task" > .codex/features/source-feat/tasks/todo.md
     echo "source lessons" > .codex/features/source-feat/tasks/lessons.md
     mkdir -p docs/source-feat
     echo "source docs" > docs/source-feat/notes.md
 
-    run bash -c 'echo "n" | "$1" fork source-feat forked-feat' -- "$CLAUDE_SWITCH"
+    run bash -c 'echo "n" | "$1" fork source-feat forked-feat' -- "$CODY_SWITCH_BIN"
     [ "$status" -eq 0 ]
 
     # Forked feature should have copies
     [ -f .codex/features/forked-feat/AGENTS.md ]
-    [[ "$(cat .codex/features/forked-feat/AGENTS.md)" == *"Source CLAUDE"* ]]
+    [[ "$(cat .codex/features/forked-feat/AGENTS.md)" == *"Source AGENTS"* ]]
     [ -f .codex/features/forked-feat/tasks/todo.md ]
     [ -d docs/forked-feat ]
 }
@@ -253,7 +253,7 @@ load test_helper
     mkdir -p docs/source-feat
     echo "docs" > docs/source-feat/notes.md
 
-    run bash -c 'echo "n" | "$1" fork source-feat no-docs-feat --without-docs' -- "$CLAUDE_SWITCH"
+    run bash -c 'echo "n" | "$1" fork source-feat no-docs-feat --without-docs' -- "$CODY_SWITCH_BIN"
     [ "$status" -eq 0 ]
 
     [ -f .codex/features/no-docs-feat/AGENTS.md ]
@@ -268,7 +268,7 @@ load test_helper
     echo "# Source" > .codex/features/source-feat/AGENTS.md
     echo "old task" > .codex/features/source-feat/tasks/todo.md
 
-    run bash -c 'echo "n" | "$1" fork source-feat no-tasks-feat --without-tasks' -- "$CLAUDE_SWITCH"
+    run bash -c 'echo "n" | "$1" fork source-feat no-tasks-feat --without-tasks' -- "$CODY_SWITCH_BIN"
     [ "$status" -eq 0 ]
 
     [ -f .codex/features/no-tasks-feat/AGENTS.md ]
@@ -289,7 +289,7 @@ load test_helper
     echo "## Lessons" > tasks/lessons.md
     mkdir -p .codex/features
 
-    run "$CLAUDE_SWITCH" new persist-feat
+    run "$CODY_SWITCH_BIN" new persist-feat
     [ "$status" -eq 0 ]
 
     # AGENTS.md should be persisted to storage immediately
@@ -313,7 +313,7 @@ load test_helper
 
     echo "my-feature" > .codex-current-feature
 
-    run "$CLAUDE_SWITCH" current
+    run "$CODY_SWITCH_BIN" current
     [ "$status" -eq 0 ]
     local cleaned
     cleaned=$(echo "$output" | strip_ansi)
@@ -326,7 +326,7 @@ load test_helper
     mkdir -p .codex/features/peek-target
     echo "# Peek Content Here" > .codex/features/peek-target/AGENTS.md
 
-    run "$CLAUDE_SWITCH" peek peek-target
+    run "$CODY_SWITCH_BIN" peek peek-target
     [ "$status" -eq 0 ]
     [[ "$output" == *"Peek Content Here"* ]]
 
@@ -342,7 +342,7 @@ load test_helper
     echo "# Archive Me" > .codex/features/to-archive/AGENTS.md
     mkdir -p docs/to-archive
 
-    run "$CLAUDE_SWITCH" archive to-archive
+    run "$CODY_SWITCH_BIN" archive to-archive
     [ "$status" -eq 0 ]
 
     [ -f .codex/features/archived/to-archive/AGENTS.md ]
@@ -359,7 +359,7 @@ load test_helper
     echo "# Was Archived" > .codex/features/archived/was-archived/AGENTS.md
     mkdir -p docs/archived/was-archived
 
-    run "$CLAUDE_SWITCH" unarchive was-archived
+    run "$CODY_SWITCH_BIN" unarchive was-archived
     [ "$status" -eq 0 ]
 
     [ -f .codex/features/was-archived/AGENTS.md ]
@@ -375,7 +375,7 @@ load test_helper
     echo "# Delete Me" > .codex/features/to-delete/AGENTS.md
     mkdir -p docs/to-delete
 
-    run bash -c 'echo "y" | "$1" delete to-delete' -- "$CLAUDE_SWITCH"
+    run bash -c 'echo "y" | "$1" delete to-delete' -- "$CODY_SWITCH_BIN"
     [ "$status" -eq 0 ]
 
     [ ! -d .codex/features/to-delete ]

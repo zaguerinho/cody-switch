@@ -283,6 +283,35 @@ _install_one_skill() {
     fi
 }
 
+# Install a companion binary from a local source tree when release download is unavailable.
+_install_skill_binary_from_source() {
+    local bin_name="$1" target="$2"
+    local source_dir="$SCRIPT_DIR/$bin_name"
+    local source_binary="$source_dir/$bin_name"
+
+    [ -d "$source_dir" ] || return 1
+    [ -f "$source_dir/Makefile" ] || return 1
+    command -v make >/dev/null 2>&1 || return 1
+    command -v go >/dev/null 2>&1 || return 1
+
+    echo -e "Building ${CYAN}${bin_name}${NC} from local source..."
+    if ! make -C "$source_dir" build >/dev/null; then
+        return 1
+    fi
+    [ -x "$source_binary" ] || return 1
+
+    mkdir -p "$CODEX_BIN_DIR"
+    cp "$source_binary" "$target"
+    chmod +x "$target"
+    echo -e "${GREEN}Installed binary: ${bin_name} (built from local source)${NC}"
+
+    if ! _path_contains_dir "$CODEX_BIN_DIR"; then
+        echo -e "${YELLOW}  Add to your PATH: export PATH=\"\$HOME/.codex/bin:\$PATH\"${NC}"
+        echo -e "${YELLOW}  Or add that line to your ~/.zshrc or ~/.bashrc${NC}"
+    fi
+    return 0
+}
+
 # Install a companion binary for a skill (downloaded from GitHub Releases).
 # Looks for a BINARY metadata file in the skill's source directory.
 _install_skill_binary() {
@@ -325,8 +354,11 @@ _install_skill_binary() {
     fi
 
     if [ -z "$tag" ]; then
-        echo -e "${YELLOW}No release found for ${bin_name}, skipping binary download${NC}"
-        echo -e "${YELLOW}  Build from source: cd $SCRIPT_DIR/$bin_name && make build${NC}"
+        if _install_skill_binary_from_source "$bin_name" "$target"; then
+            return 0
+        fi
+        echo -e "${YELLOW}No release found for ${bin_name}, and local source build was unavailable${NC}"
+        echo -e "${YELLOW}  Manual build: cd $SCRIPT_DIR/$bin_name && make build${NC}"
         return 0
     fi
 
@@ -360,8 +392,11 @@ _install_skill_binary() {
         fi
     else
         rm -rf "$tmpdir"
-        echo -e "${YELLOW}Download failed for ${bin_name} v${version} (${os}/${arch})${NC}"
-        echo -e "${YELLOW}  Build from source: cd $SCRIPT_DIR/$bin_name && make build${NC}"
+        if _install_skill_binary_from_source "$bin_name" "$target"; then
+            return 0
+        fi
+        echo -e "${YELLOW}Download failed for ${bin_name} v${version} (${os}/${arch}), and local source build was unavailable${NC}"
+        echo -e "${YELLOW}  Manual build: cd $SCRIPT_DIR/$bin_name && make build${NC}"
     fi
 }
 
@@ -674,7 +709,7 @@ PROJECT_DIR="$(find_project_root)" || {
 }
 
 TRACKER_FILE="$PROJECT_DIR/.codex-current-feature"
-CLAUDE_MD="$PROJECT_DIR/AGENTS.md"
+AGENTS_MD="$PROJECT_DIR/AGENTS.md"
 WORKFLOW_TEMPLATE="$SCRIPT_DIR/workflow.md"
 DOCS_DIR="$PROJECT_DIR/docs"
 TASKS_DIR="$PROJECT_DIR/tasks"
@@ -848,7 +883,7 @@ get_archived_features() {
 get_current() {
     if [ -f "$TRACKER_FILE" ]; then
         cat "$TRACKER_FILE"
-    elif [ -f "$CLAUDE_MD" ]; then
+    elif [ -f "$AGENTS_MD" ]; then
         echo "(active but untracked)"
     else
         echo "(none)"
@@ -1178,7 +1213,7 @@ SCAFFOLD
 }
 
 # Create a minimal AGENTS.md scaffold for a feature
-_create_claude_scaffold() {
+_create_agents_scaffold() {
     local name="$1"
     local dest="$2"
     cat > "$dest" << SCAFFOLD
@@ -1400,13 +1435,13 @@ remove_worktree() {
 
 # Strip --with reference content from AGENTS.md before saving
 strip_reference_contexts() {
-    if [ -f "$WITH_REFS_FILE" ] && [ -f "$CLAUDE_MD" ]; then
+    if [ -f "$WITH_REFS_FILE" ] && [ -f "$AGENTS_MD" ]; then
         # Remove all reference blocks (portable: no sed -i which differs BSD vs GNU)
         local tmpfile
         tmpfile=$(mktemp)
-        sed '/<!-- cody-switch-ref:.*:start -->/,/<!-- cody-switch-ref:.*:end -->/d' "$CLAUDE_MD" > "$tmpfile"
+        sed '/<!-- cody-switch-ref:.*:start -->/,/<!-- cody-switch-ref:.*:end -->/d' "$AGENTS_MD" > "$tmpfile"
         # Remove trailing blank lines left behind
-        sed -e :a -e '/^\n*$/{$d;N;ba' -e '}' "$tmpfile" > "$CLAUDE_MD"
+        sed -e :a -e '/^\n*$/{$d;N;ba' -e '}' "$tmpfile" > "$AGENTS_MD"
         rm -f "$tmpfile"
         rm -f "$WITH_REFS_FILE"
         echo -e "${BLUE}Stripped reference contexts from AGENTS.md${NC}"
@@ -1423,15 +1458,15 @@ append_reference_context() {
         return 1
     fi
 
-    echo "" >> "$CLAUDE_MD"
-    echo "<!-- cody-switch-ref:${ref_name}:start -->" >> "$CLAUDE_MD"
-    echo "" >> "$CLAUDE_MD"
-    echo "---" >> "$CLAUDE_MD"
-    echo "# Reference: ${ref_name}" >> "$CLAUDE_MD"
-    echo "" >> "$CLAUDE_MD"
-    cat "$ref_file" >> "$CLAUDE_MD"
-    echo "" >> "$CLAUDE_MD"
-    echo "<!-- cody-switch-ref:${ref_name}:end -->" >> "$CLAUDE_MD"
+    echo "" >> "$AGENTS_MD"
+    echo "<!-- cody-switch-ref:${ref_name}:start -->" >> "$AGENTS_MD"
+    echo "" >> "$AGENTS_MD"
+    echo "---" >> "$AGENTS_MD"
+    echo "# Reference: ${ref_name}" >> "$AGENTS_MD"
+    echo "" >> "$AGENTS_MD"
+    cat "$ref_file" >> "$AGENTS_MD"
+    echo "" >> "$AGENTS_MD"
+    echo "<!-- cody-switch-ref:${ref_name}:end -->" >> "$AGENTS_MD"
 
     # Track the reference
     echo "$ref_name" >> "$WITH_REFS_FILE"
@@ -1760,9 +1795,9 @@ list_features() {
             safe_wt_path="${safe_wt_path//\"/\\\"}"
             local health="ok"
             if [ ! -f "$fdir/AGENTS.md" ] && [ "$feature" != "$current" ]; then
-                health="missing_claude_md"
+                health="missing_agents_md"
             elif [ -f "$fdir/AGENTS.md" ] && [ ! -s "$fdir/AGENTS.md" ]; then
-                health="empty_claude_md"
+                health="empty_agents_md"
             fi
             local is_current=false; [ "$feature" = "$current" ] && is_current=true
             [ "$first" = true ] && first=false || features_json+=","
@@ -1796,7 +1831,7 @@ list_features() {
     local i=1
 
     # Show current active if exists
-    if [ -f "$CLAUDE_MD" ]; then
+    if [ -f "$AGENTS_MD" ]; then
         local active_indicators=""
         if [ -d "$TASKS_DIR" ]; then
             active_indicators=" ${BLUE}[tasks]${NC}"
@@ -1915,10 +1950,10 @@ save_current() {
         save_session "$current"
         ensure_feature_dir "$current"
         local dest="$(get_feature_dir "$current")/AGENTS.md"
-        if [ -f "$CLAUDE_MD" ]; then
+        if [ -f "$AGENTS_MD" ]; then
             # Idempotent: skip if content is already identical (avoids dirty git state)
-            if [ ! -f "$dest" ] || ! diff -q "$CLAUDE_MD" "$dest" >/dev/null 2>&1; then
-                cp "$CLAUDE_MD" "$dest"
+            if [ ! -f "$dest" ] || ! diff -q "$AGENTS_MD" "$dest" >/dev/null 2>&1; then
+                cp "$AGENTS_MD" "$dest"
             fi
         else
             # Root AGENTS.md is missing (e.g., git checkout restored it to repo version)
@@ -1926,11 +1961,11 @@ save_current() {
             if [ ! -f "$dest" ]; then
                 _is_json || echo -e "${YELLOW}Warning: No AGENTS.md at project root for '${current}' — feature AGENTS.md may have been lost${NC}"
                 _is_json || echo -e "${YELLOW}Creating minimal scaffold to prevent complete data loss${NC}"
-                _create_claude_scaffold "$current" "$dest"
+                _create_agents_scaffold "$current" "$dest"
             fi
         fi
         save_tasks "$current"
-    elif [ "$current" = "(active but untracked)" ] && [ -f "$CLAUDE_MD" ]; then
+    elif [ "$current" = "(active but untracked)" ] && [ -f "$AGENTS_MD" ]; then
         if _is_json; then
             # In JSON mode, skip interactive save prompt — leave AGENTS.md in place
             return 0
@@ -1952,7 +1987,7 @@ save_current() {
             ensure_docs_folder "$save_name"
             save_session "$save_name"
             ensure_feature_dir "$save_name"
-            cp "$CLAUDE_MD" "$(get_feature_dir "$save_name")/AGENTS.md"
+            cp "$AGENTS_MD" "$(get_feature_dir "$save_name")/AGENTS.md"
             save_tasks "$save_name"
             echo -e "${GREEN}Saved current AGENTS.md as '${save_name}'${NC}"
         fi
@@ -2106,9 +2141,9 @@ switch_to() {
         # Feature AGENTS.md is missing (data loss) — create scaffold and warn
         _is_json || echo -e "${YELLOW}Warning: AGENTS.md for '${target}' is missing (possible data loss)${NC}"
         _is_json || echo -e "${YELLOW}Creating minimal scaffold. Run 'cody-switch doctor' for full diagnosis.${NC}"
-        _create_claude_scaffold "$target" "$feature_file"
+        _create_agents_scaffold "$target" "$feature_file"
     fi
-    cp "$feature_file" "$CLAUDE_MD"
+    cp "$feature_file" "$AGENTS_MD"
     echo "$target" > "$TRACKER_FILE"
     echo "$target" > "$PROJECT_DIR/.codex-last-seen-feature"
     restore_tasks "$target"
@@ -2186,9 +2221,9 @@ create_new() {
         fi
     fi
 
-    if [ ! -f "$CLAUDE_MD" ]; then
+    if [ ! -f "$AGENTS_MD" ]; then
         _is_json || echo -e "${YELLOW}No active AGENTS.md. Creating scaffold for '${name}'${NC}"
-        _create_claude_scaffold "$name" "$CLAUDE_MD"
+        _create_agents_scaffold "$name" "$AGENTS_MD"
     fi
 
     ensure_docs_folder "$name"
@@ -2196,7 +2231,7 @@ create_new() {
 
     # Persist AGENTS.md and tasks to storage immediately
     ensure_feature_dir "$name"
-    cp "$CLAUDE_MD" "$(get_feature_dir "$name")/AGENTS.md"
+    cp "$AGENTS_MD" "$(get_feature_dir "$name")/AGENTS.md"
     save_tasks "$name"
 
     if _is_json; then
@@ -2274,12 +2309,12 @@ create_blank() {
             python3 -c "import sys; print(sys.stdin.read().replace('{feature-name}', sys.argv[1]), end='')" "$name" < "$WORKFLOW_TEMPLATE" > "$feature_file"
             _is_json || echo -e "${GREEN}Created feature context '${name}' (from workflow.md)${NC}"
         else
-            _create_claude_scaffold "$name" "$feature_file"
+            _create_agents_scaffold "$name" "$feature_file"
             _is_json || echo -e "${GREEN}Created feature context: ${name} (minimal scaffold)${NC}"
             _is_json || echo -e "${YELLOW}Warning: workflow.md template not found at ${WORKFLOW_TEMPLATE}${NC}"
         fi
     else
-        _create_claude_scaffold "$name" "$feature_file"
+        _create_agents_scaffold "$name" "$feature_file"
         _is_json || echo -e "${GREEN}Created feature context: ${name}${NC}"
     fi
     ensure_docs_folder "$name"
@@ -2319,7 +2354,7 @@ create_blank() {
     if [ "$use_worktree" = true ]; then
         # Worktree features: print path instead of switch prompt
         echo -e "${YELLOW}To start working in the worktree:${NC}"
-        echo -e "  ${CYAN}cd ${worktree_path} && claude${NC}"
+        echo -e "  ${CYAN}cd ${worktree_path} && codex${NC}"
     else
         # Ask if they want to switch
         echo -e "${YELLOW}Switch to '${name}' now?${NC} [y/N] "
@@ -2398,7 +2433,7 @@ fork_feature() {
     fi
 
     # Resolve source location
-    local source_claude=""
+    local source_agents=""
     local source_tasks=""
     local source_docs=""
     local current
@@ -2406,17 +2441,17 @@ fork_feature() {
 
     if [ "$source" = "$current" ]; then
         # Active feature: AGENTS.md and tasks/ at project root
-        source_claude="$CLAUDE_MD"
+        source_agents="$AGENTS_MD"
         [ -d "$TASKS_DIR" ] && source_tasks="$TASKS_DIR"
         [ -d "$DOCS_DIR/$source" ] && source_docs="$DOCS_DIR/$source"
     elif [ -f "$(get_feature_dir "$source")/AGENTS.md" ]; then
         # Stored feature
-        source_claude="$(get_feature_dir "$source")/AGENTS.md"
+        source_agents="$(get_feature_dir "$source")/AGENTS.md"
         [ -d "$(get_feature_dir "$source")/tasks" ] && source_tasks="$(get_feature_dir "$source")/tasks"
         [ -d "$DOCS_DIR/$source" ] && source_docs="$DOCS_DIR/$source"
     elif [ -f "$(get_archived_feature_dir "$source")/AGENTS.md" ]; then
         # Archived feature
-        source_claude="$(get_archived_feature_dir "$source")/AGENTS.md"
+        source_agents="$(get_archived_feature_dir "$source")/AGENTS.md"
         [ -d "$(get_archived_feature_dir "$source")/tasks" ] && source_tasks="$(get_archived_feature_dir "$source")/tasks"
         local archived_docs="$DOCS_DIR/archived/$source"
         [ -d "$archived_docs" ] && source_docs="$archived_docs"
@@ -2432,7 +2467,7 @@ fork_feature() {
     new_dir="$(get_feature_dir "$name")"
 
     # Always copy AGENTS.md
-    cp "$source_claude" "$new_dir/AGENTS.md"
+    cp "$source_agents" "$new_dir/AGENTS.md"
 
     # Tasks
     if [ "$without_tasks" = true ] || [ -z "$source_tasks" ]; then
@@ -2487,7 +2522,7 @@ fork_feature() {
             "source" "$source" "feature" "$name" \
             "branch_created" "@bool:$branch_created" \
             "has_worktree" "@bool:$has_worktree" "worktree_path" "$worktree_path" \
-            "copied" "@json:{\"claude_md\":true,\"tasks\":$copied_tasks,\"docs\":$copied_docs}"
+            "copied" "@json:{\"agents_md\":true,\"tasks\":$copied_tasks,\"docs\":$copied_docs}"
         return
     fi
 
@@ -2496,7 +2531,7 @@ fork_feature() {
     if [ "$use_worktree" = true ]; then
         # Worktree features: print path instead of switch prompt
         echo -e "${YELLOW}To start working in the worktree:${NC}"
-        echo -e "  ${CYAN}cd ${worktree_path} && claude${NC}"
+        echo -e "  ${CYAN}cd ${worktree_path} && codex${NC}"
     else
         # Ask if they want to switch
         echo -e "${YELLOW}Switch to '${name}' now?${NC} [y/N] "
@@ -2638,15 +2673,15 @@ peek_feature() {
 
     # Check if it's the active feature
     local current=$(get_current)
-    if [ "$target" = "$current" ] && [ -f "$CLAUDE_MD" ]; then
+    if [ "$target" = "$current" ] && [ -f "$AGENTS_MD" ]; then
         if _is_json; then
             _json_emit "success" "@bool:true" "command" "peek" "feature" "$target" \
-                "status" "active" "content" "$(cat "$CLAUDE_MD")"
+                "status" "active" "content" "$(cat "$AGENTS_MD")"
             return
         fi
         echo -e "${BOLD}=== ${target} (active) ===${NC}"
         echo ""
-        cat "$CLAUDE_MD"
+        cat "$AGENTS_MD"
         return
     fi
 
@@ -2665,7 +2700,7 @@ peek_feature() {
         else
             if _is_json; then
                 _json_emit "success" "@bool:true" "command" "peek" "feature" "$target" \
-                    "status" "missing_claude_md" "content" ""
+                    "status" "missing_agents_md" "content" ""
                 return
             fi
             echo -e "${BOLD}=== ${target} ===${NC}"
@@ -2692,7 +2727,7 @@ peek_feature() {
         else
             if _is_json; then
                 _json_emit "success" "@bool:true" "command" "peek" "feature" "$target" \
-                    "status" "archived_missing_claude_md" "content" ""
+                    "status" "archived_missing_agents_md" "content" ""
                 return
             fi
             echo -e "${BOLD}=== ${target} (archived) ===${NC}"
@@ -2822,12 +2857,12 @@ doctor() {
     # 1. Current active feature status
     _is_json || echo -e "${BOLD}Active Feature${NC}"
     _is_json || echo -e "  Tracker:    ${CYAN}${current}${NC}"
-    if [ -f "$CLAUDE_MD" ]; then
+    if [ -f "$AGENTS_MD" ]; then
         local md_size
-        md_size=$(wc -c < "$CLAUDE_MD" | tr -d ' ')
+        md_size=$(wc -c < "$AGENTS_MD" | tr -d ' ')
         _is_json || echo -e "  Root AGENTS.md: ${GREEN}exists${NC} (${md_size} bytes)"
         if git show HEAD:AGENTS.md >/dev/null 2>&1; then
-            if diff -q "$CLAUDE_MD" <(git show HEAD:AGENTS.md 2>/dev/null) >/dev/null 2>&1; then
+            if diff -q "$AGENTS_MD" <(git show HEAD:AGENTS.md 2>/dev/null) >/dev/null 2>&1; then
                 _is_json || echo -e "  ${YELLOW}Note: Root AGENTS.md matches git HEAD — this is the repo file, NOT a feature file${NC}"
                 if [ "$current" != "(none)" ] && [ "$current" != "(active but untracked)" ]; then
                     _is_json || echo -e "  ${RED}ISSUE: Feature '${current}' is tracked as active but root AGENTS.md is the repo version${NC}"
@@ -2864,13 +2899,13 @@ doctor() {
             [ "$name" = "archived" ] && continue
             total=$((total + 1))
 
-            local has_claude=false
+            local has_agents_md=false
             local has_content=false
             local has_session=false
             local has_tasks=false
 
             if [ -f "$d/AGENTS.md" ]; then
-                has_claude=true
+                has_agents_md=true
                 [ -s "$d/AGENTS.md" ] && has_content=true
             fi
             if [ -f "$d/session" ] || [ -f "$d/session-latest" ]; then
@@ -2882,11 +2917,11 @@ doctor() {
 
             # Skip the active feature (its AGENTS.md is at project root)
             if [ "$name" = "$current" ]; then
-                if [ "$has_claude" = false ] && [ -f "$CLAUDE_MD" ]; then
+                if [ "$has_agents_md" = false ] && [ -f "$AGENTS_MD" ]; then
                     # Expected: active feature's AGENTS.md is at root
                     healthy=$((healthy + 1))
                     continue
-                elif [ "$has_claude" = true ]; then
+                elif [ "$has_agents_md" = true ]; then
                     # AGENTS.md in both places — unusual but not broken
                     healthy=$((healthy + 1))
                     continue
@@ -2896,13 +2931,13 @@ doctor() {
             local _feat_health="healthy"
             local _feat_fixed=false
 
-            if [ "$has_claude" = true ] && [ "$has_content" = true ]; then
+            if [ "$has_agents_md" = true ] && [ "$has_content" = true ]; then
                 healthy=$((healthy + 1))
-            elif [ "$has_claude" = true ] && [ "$has_content" = false ]; then
+            elif [ "$has_agents_md" = true ] && [ "$has_content" = false ]; then
                 empty_md=$((empty_md + 1))
-                _feat_health="empty_claude_md"
+                _feat_health="empty_agents_md"
                 if [ "$fix_mode" = true ]; then
-                    _create_claude_scaffold "$name" "$d/AGENTS.md"
+                    _create_agents_scaffold "$name" "$d/AGENTS.md"
                     _is_json || echo -e "  ${GREEN}Fixed:${NC} ${name} — created scaffold AGENTS.md (was 0 bytes)"
                     fixed=$((fixed + 1))
                     _feat_fixed=true
@@ -2910,15 +2945,15 @@ doctor() {
                     _is_json || echo -e "  ${YELLOW}EMPTY${NC}   ${name} — AGENTS.md is 0 bytes"
                     issues=$((issues + 1))
                 fi
-            elif [ "$has_claude" = false ]; then
+            elif [ "$has_agents_md" = false ]; then
                 missing_md=$((missing_md + 1))
-                _feat_health="missing_claude_md"
+                _feat_health="missing_agents_md"
                 local artifacts=""
                 [ "$has_session" = true ] && artifacts="${artifacts}session, "
                 [ "$has_tasks" = true ] && artifacts="${artifacts}tasks, "
                 artifacts="${artifacts%,*}"
                 if [ "$fix_mode" = true ] && { [ "$has_session" = true ] || [ "$has_tasks" = true ]; }; then
-                    _create_claude_scaffold "$name" "$d/AGENTS.md"
+                    _create_agents_scaffold "$name" "$d/AGENTS.md"
                     _is_json || echo -e "  ${GREEN}Fixed:${NC} ${name} — created scaffold AGENTS.md (had: ${artifacts})"
                     fixed=$((fixed + 1))
                     _feat_fixed=true
@@ -3335,7 +3370,7 @@ init_project() {
     fi
 
     # Guard: existing AGENTS.md?
-    if [ -f "$CLAUDE_MD" ] && [ "$force" = false ]; then
+    if [ -f "$AGENTS_MD" ] && [ "$force" = false ]; then
         if _is_json; then
             _json_emit "success" "@bool:false" "error" "AGENTS.md already exists at project root"
             return 0
@@ -3346,9 +3381,9 @@ init_project() {
     fi
 
     # Backup existing AGENTS.md if --force
-    if [ -f "$CLAUDE_MD" ] && [ "$force" = true ]; then
-        local backup="$CLAUDE_MD.backup.$(date +%Y%m%d%H%M%S)"
-        cp "$CLAUDE_MD" "$backup"
+    if [ -f "$AGENTS_MD" ] && [ "$force" = true ]; then
+        local backup="$AGENTS_MD.backup.$(date +%Y%m%d%H%M%S)"
+        cp "$AGENTS_MD" "$backup"
         _is_json || echo -e "  ${YELLOW}Backed up${NC} AGENTS.md → $(basename "$backup")"
     fi
 
@@ -3373,7 +3408,7 @@ init_project() {
     local testing_content
     testing_content="$(_testing_section "$test_fw")"
 
-    cat > "$CLAUDE_MD" << INITEOF
+    cat > "$AGENTS_MD" << INITEOF
 # Project: ${project_name}
 
 ## Tech Stack
@@ -3583,7 +3618,7 @@ merge_feature() {
     # AGENTS.md
     local source_md="$source_dir/AGENTS.md"
     if [ "$target_is_active" = true ]; then
-        local target_md="$CLAUDE_MD"
+        local target_md="$AGENTS_MD"
     else
         local target_md="$target_dir/AGENTS.md"
     fi
@@ -3751,7 +3786,7 @@ merge_feature() {
     if _is_json; then
         _json_emit "success" "@bool:true" "command" "merge" \
             "source" "$source" "target" "$target" \
-            "merged" "@json:{\"claude_md\":$merged_md,\"tasks\":$merged_tasks,\"docs_copied\":${#doc_copy[@]},\"docs_skipped\":${#doc_skip[@]}}" \
+            "merged" "@json:{\"agents_md\":$merged_md,\"tasks\":$merged_tasks,\"docs_copied\":${#doc_copy[@]},\"docs_skipped\":${#doc_skip[@]}}" \
             "post_action" "$post_action"
         return
     fi
