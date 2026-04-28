@@ -2,19 +2,18 @@
 name: hub
 description: >
   Coordinate with other Codex agents via agent-hub. Use when the user says
-  "/hub", "check messages", "post to hub", "coordinate with", "ask the other agent",
-  "send a question", "check room", "status update", or needs to communicate
-  with agents in other projects. Also triggers when session-start reports unread
-  agent-hub messages.
+  "hub", "check messages", "post to hub", "coordinate with", "ask the other agent",
+  "send a question", "check room", "current room", "bootstrap room", "rename agent",
+  "status update", or needs to communicate with agents in other projects.
 ---
 
-# /hub — Agent Coordination
+# hub — Agent Coordination
 
 Coordinate with other Codex agents via the agent-hub local server.
 
-**Input:** `/hub $ARGUMENTS` or natural language about cross-agent coordination.
+**Input:** Natural language about cross-agent coordination.
 
-**Default behavior (`/hub` with no args or "proceed"):** Run the full playbook check-in — assess the room, read unread messages, evaluate the playbook, take the next action. This is the primary way the human tells you "your turn, go."
+**Default behavior ("hub", "proceed", or "check in"):** Run the full playbook check-in — assess the room, read unread messages, evaluate the playbook, take the next action. This is the primary way the human tells you "your turn, go."
 
 ## Prerequisites
 
@@ -53,21 +52,44 @@ Once you know your alias, every command pattern is:
 - Writing commands: add `--from YOUR_ALIAS`
 - Join/leave/ack: add `--as YOUR_ALIAS`
 
+## Room Binding
+
+Newer `agent-hub` versions can bind a project to a current room with `.agent-hub-room`.
+When a room is bound, many commands can omit the room argument.
+
+Check the binding first:
+
+```bash
+agent-hub room current
+```
+
+Bind or bootstrap a room when needed:
+
+```bash
+agent-hub room current <room>
+agent-hub room bootstrap <room> --agent alias[:role] --description "Purpose"
+```
+
+If the local `agent-hub` binary does not support these commands, fall back to the explicit room forms shown below.
+
 ## Intent Detection
 
 | User Intent | Triggers | Action |
 |-------------|----------|--------|
-| **Proceed / check in** | "/hub", "proceed", "check in", "what's next", "continue", no args | **Full playbook check-in** (see below) |
-| Check messages | "check messages", "anything new", unread notification | `agent-hub check <room> --as <alias>` |
-| Read messages | "read messages", "what did they say" | `agent-hub read <room> --unread --as <alias>` then `agent-hub ack` |
-| Post question | "ask", "question for" | `agent-hub post <room> --from <alias> --type question --subject "..." "body"` |
-| Post answer | "reply", "respond to", "answer" | `agent-hub post <room> --from <alias> --type answer --subject "..." "body"` |
-| Post RFC | "propose", "RFC", "design decision" | `agent-hub post <room> --from <alias> --type rfc --subject "..." "body"` |
-| Post note | "note", "FYI", "heads up" | `agent-hub post <room> --from <alias> --type note "body"` |
-| Status update | "status", "update status", "I'm done with" | `agent-hub status <room> --update "key=value" --from <alias>` |
-| Show status | "show status", "where are we" | `agent-hub status <room>` |
+| **Proceed / check in** | "hub", "proceed", "check in", "what's next", "continue", no args | **Full playbook check-in** (see below) |
+| Check messages | "check messages", "anything new", unread notification | `agent-hub check [room] --as <alias>` |
+| Read messages | "read messages", "what did they say" | `agent-hub read [room] --unread --as <alias>` then `agent-hub ack [room] --as <alias>` |
+| Post question | "ask", "question for" | `agent-hub post [room] --from <alias> --type question --subject "..." "body"` |
+| Post answer | "reply", "respond to", "answer" | `agent-hub post [room] --from <alias> --type answer --subject "..." "body"` |
+| Post RFC | "propose", "RFC", "design decision" | `agent-hub post [room] --from <alias> --type rfc --subject "..." "body"` |
+| Post note | "note", "FYI", "heads up" | `agent-hub post [room] --from <alias> --type note "body"` |
+| Status update | "status", "update status", "I'm done with" | `agent-hub status [room] --update "key=value" --from <alias>` |
+| Show status | "show status", "where are we" | `agent-hub status [room]` |
 | Join room | "join", "connect to" | `agent-hub join <room> --as <alias> --role <role>` then read docs |
-| Room info | "who's in", "list rooms" | `agent-hub who <room>` or `agent-hub room list` |
+| Bootstrap room | "create coordination room", "set up room" | `agent-hub room bootstrap <room> --agent alias[:role] --description "..."` |
+| Current room | "which room", "current room" | `agent-hub room current` |
+| Rename agent | "rename agent", "change alias" | `agent-hub rename [room] <old> <new> --role "..."` |
+| Room info | "who's in", "list rooms" | `agent-hub who [room]` or `agent-hub room list` |
 | Read doc | "read protocol", "show manifesto", "what are the rules" | `agent-hub doc read <room> PROTOCOL.md` |
 | Update doc | "update manifesto", "change status doc" | `agent-hub doc update <room> <doc> --file <path>` |
 | List docs | "what docs", "show documents" | `agent-hub doc list <room>` |
@@ -75,7 +97,7 @@ Once you know your alias, every command pattern is:
 ## Key Rules
 
 1. **Always confirm before posting** — show a preview of the message to the user first
-2. **Auto-ack after reading** — after displaying unread messages, always run `agent-hub ack <room> --as <alias>`
+2. **Auto-ack after reading** — after displaying unread messages, always run `agent-hub ack [room] --as <alias>`
 3. **Keep messages concise** — the other agent has limited context; include specific file paths, code snippets, and actionable details
 4. **Reference message IDs** — when answering a question, note which message you're responding to (e.g., "Re: #3")
 5. **Use --json for parsing** — when you need to programmatically check results, add `--json`
@@ -99,7 +121,7 @@ Follow these docs. If you disagree with something, propose a change via an RFC m
 
 ### Step 1: Assess (one call replaces five)
 ```bash
-agent-hub assess <room> --as YOUR_ALIAS --json
+agent-hub assess [room] --as YOUR_ALIAS --json
 ```
 
 This returns everything pre-computed: phase, manifesto readiness, dimensions, open RFCs, unread count, agent list. **Use this instead of reading individual docs** — it saves tokens.
@@ -120,7 +142,7 @@ This returns everything pre-computed: phase, manifesto readiness, dimensions, op
 
 **If `open_rfcs` is non-empty → Respond to RFCs first.** Open RFCs block phase transitions. Read the RFC messages and respond before doing anything else:
 ```bash
-agent-hub read <room> --last 10 --as YOUR_ALIAS
+agent-hub read [room] --last 10 --as YOUR_ALIAS
 ```
 
 **Otherwise → follow the current phase** from the playbook. Only read PLAYBOOK.md if you need to check the detailed phase actions:
@@ -136,7 +158,7 @@ agent-hub doc read <room> PLAYBOOK.md
 
 ### When the user asks "what's next?"
 ```bash
-agent-hub assess <room> --as YOUR_ALIAS --json
+agent-hub assess [room] --as YOUR_ALIAS --json
 ```
 Present:
 1. Current phase and progress summary (from the assessment)
@@ -159,6 +181,13 @@ Or list all available rooms:
 agent-hub room list
 ```
 
+For diagnostics:
+
+```bash
+agent-hub doctor --json
+agent-hub health --json
+```
+
 ## Dashboard
 
 The user can view all rooms, messages, and status boards at: `http://localhost:9093`
@@ -168,28 +197,32 @@ The user can view all rooms, messages, and status boards at: `http://localhost:9
 ```
 agent-hub serve [--api-port 7777] [--ui-port 9093]   # Start server
 agent-hub stop                                         # Stop server
-agent-hub health                                       # Health check
+agent-hub health [--shallow]                           # Health check; deep API check by default
+agent-hub doctor                                       # Diagnose API reachability and room binding
 
 agent-hub identity set --alias=<name> [--description="..."]  # Set identity
 agent-hub identity show                                       # Show identity
 agent-hub identity clear                                      # Clear identity
 
 agent-hub room create <name> [--description "..."]     # Create room
+agent-hub room bootstrap <name> --agent alias[:role]   # Create/reuse, join agents, bind project
+agent-hub room current [room]                          # Show or set project room binding
 agent-hub room list                                    # List rooms
 agent-hub room info <name>                             # Room detail
 agent-hub room archive <name>                          # Archive room
 
 agent-hub join <room> --as <alias> [--role <role>]     # Join
 agent-hub leave <room> --as <alias>                    # Leave
-agent-hub who <room>                                   # List members
+agent-hub rename [room] <old> <new> [--role "..."]     # Rename agent; room defaults to binding
+agent-hub who [room]                                   # List members; room defaults to binding
 
-agent-hub post <room> --from <alias> [--type T] [--subject S] "body"
-agent-hub check <room> --as <alias>                    # Unread count
-agent-hub read <room> [--last N] [--unread --as A]     # Read messages
-agent-hub ack <room> --as <alias> [--up-to ID]         # Mark as read
+agent-hub post [room] --from <alias> [--type T] [--subject S] "body"
+agent-hub check [room] --as <alias>                    # Unread count; room defaults to binding
+agent-hub read [room] [--last N] [--unread --as A]     # Read messages; room defaults to binding
+agent-hub ack [room] --as <alias> [--up-to ID]         # Mark as read; room defaults to binding
 
-agent-hub status <room>                                # Show board
-agent-hub status <room> --update "k=v" --from <alias>  # Update
+agent-hub status [room]                                # Show board; room defaults to binding
+agent-hub status [room] --update "k=v" --from <alias>  # Update; room defaults to binding
 
 agent-hub doc list <room>                              # List docs
 agent-hub doc read <room> <doc>                        # Read a doc
