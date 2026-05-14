@@ -81,6 +81,7 @@ cody-switch fork auth-system auth-v2
 cody-switch list
 cody-switch auth-system
 cody-switch auth-system --with payment-flow
+cody-switch auth-system --no-auto-commit
 
 cody-switch current
 cody-switch save
@@ -105,6 +106,7 @@ cody-switch uninstall
 cody-switch init [--template <stack>] [--force]
 
 cody-switch list [--all]
+cody-switch <name|number> [--with <ref>] [--no-auto-commit]
 cody-switch current
 cody-switch new <name>
 cody-switch blank <name> [--branch|--worktree] [--workflow]
@@ -127,6 +129,18 @@ cody-switch doctor [--fix]
 cody-switch prompt list
 cody-switch prompt code-review
 ```
+
+## Cross-Feature Leak Protection
+
+The main leak vector is editing root `AGENTS.md` while feature `A` is active, mirroring it into `.codex/features/A/AGENTS.md`, then accidentally committing that tracked feature-context diff on another branch.
+
+`cody-switch` protects that path in three layers:
+
+1. Auto-save plus commit on switch when the only tracked dirty paths belong to the active feature and the current branch is not protected. Pass `--no-auto-commit` to opt out.
+2. Feature-aware aborts for protected branches, detached HEAD, cross-feature dirt, mixed dirt, and plain code dirt.
+3. A managed per-repo pre-commit hook, installed by `cody-switch install` or `cody-switch init`, that blocks staged `.codex/features/<X>/...` paths when `<X>` is not the active feature.
+
+Protected branches default to `main master roles-deploy`. Override with `CODY_SWITCH_PROTECTED_BRANCHES="main release"`. Hook bypasses are `git commit --no-verify` or `CODY_SWITCH_SKIP_FEATURE_GUARD=1 git commit -m "..."`.
 
 ## Storage Layout
 
@@ -190,7 +204,7 @@ Core skills in `global-skills/` install to `~/.codex/skills/`.
 
 Optional extras in `global-skills-extra/` are opt-in. Some extras are still legacy and may require additional Codex-specific rework before they feel native.
 
-The `sync-switch` core skill documents the maintenance workflow for checking `~/scripts/claude-switch`, deciding which upstream changes apply, porting them into `cody-switch`, and updating `docs/upstream/claude-switch-sync.md`.
+The `bring` core skill is the friendly trigger for upstream parity work. It delegates to the `sync-switch` workflow: checking `~/scripts/claude-switch`, deciding which upstream changes apply, porting them into `cody-switch`, and updating `docs/upstream/claude-switch-sync.md`.
 
 `agent-hub` is treated as a shared, agent-agnostic companion tool. The Codex-facing integration is the `hub` skill; upstream dashboard/server changes should not be duplicated here unless this repo intentionally owns that shared component.
 

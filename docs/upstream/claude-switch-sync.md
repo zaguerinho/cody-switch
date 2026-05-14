@@ -7,8 +7,8 @@ Codex-native `cody-switch` port.
 
 - Upstream repo: `/Users/zaguerinho/scripts/claude-switch`
 - Target repo: `/Users/zaguerinho/scripts/cody-switch`
-- Last checked date: 2026-04-28
-- Last checked commit: `ab94f97655effcca1e88d9c00387f2c4a446f50e`
+- Last checked date: 2026-05-14
+- Last checked commit: `a704cd7f34652026ace64c079a08440db982e3be`
 - Previous known baseline: initial `cody-switch` import plus installer fallback commit `0d52278`
 
 ## 2026-04-28 Review
@@ -84,11 +84,75 @@ f3aaa9b feat(agent-hub): add dashboard message search and paging
 - `global-commands/handoff.md`
 - `docs/upstream/claude-switch-sync.md`
 
+## 2026-05-14 Review
+
+Compared upstream from `ab94f97655effcca1e88d9c00387f2c4a446f50e` through:
+
+```text
+4f35d2d fix(pdf): break pages naturally instead of forcing per-h2
+1b44705 fix(pdf): let h2 sections flow naturally instead of forcing new pages
+cfd8b0e Merge branch 'main' of https://github.com/zaguerinho/claude-switch
+d7dc209 feat(switch,hooks): detect cross-feature .claude/features/<X>/ dirt
+af11d30 feat(switch): auto-save+commit short-circuit at switch time
+c0bd554 feat(switch): feature-aware messages for cross-feature and code-only dirt
+3179dfe feat(hooks): add pre-commit guard against cross-feature staging
+6e1b33e fix(switch,hooks): close detached-HEAD, worktree, and staged-delete gaps
+e2faff5 Merge pull request #1 from zaguerinho/feat/cross-feature-leak-fix
+ab200ed global: add Agent Orchestration Defaults section to user CLAUDE.md
+a704cd7 global: cross-link §5 verification to §7 orchestration defaults
+```
+
+## 2026-05-14 Decisions
+
+- `4f35d2d`, `1b44705`, `cfd8b0e`: Ported the PDF skill layout fix. `h2`
+  sections now flow naturally and docs can opt into hard breaks with
+  `<div class="page-break"></div>`.
+- `d7dc209`, `af11d30`, `c0bd554`, `3179dfe`, `6e1b33e`, `e2faff5`:
+  Ported the cross-feature leak protection in Codex-native form:
+  `.codex/features`, `AGENTS.md`, `cody-switch`, `CODY_SWITCH_*`, and
+  Codex-facing recovery text. Added switch-time dirty bucketing,
+  auto-save+commit for active feature docs on non-protected branches,
+  `--no-auto-commit`, targeted abort messages, managed pre-commit hook install
+  and uninstall, init-time hook install, session-start leak warning, and Bats
+  coverage.
+- `ab200ed`, `a704cd7`: Adapted the global instruction additions to
+  `global-agents.md` with concise Codex-oriented agent orchestration defaults.
+- Added `global-skills/bring/SKILL.md` as the friendly Codex skill trigger for
+  future upstream parity runs. It delegates to the existing `sync-switch`
+  workflow and uses this file as the sync ledger.
+
+## 2026-05-14 Files Updated In cody-switch
+
+- `cody-switch`
+- `README.md`
+- `completions/cody-switch.sh`
+- `docs/upstream/claude-switch-sync.md`
+- `global-agents.md`
+- `global-skills/bring/SKILL.md`
+- `global-skills/pdf/SKILL.md`
+- `global-skills/switch/SKILL.md`
+- `global-skills/sync-switch/SKILL.md`
+- `hooks/pre-commit.sh`
+- `hooks/session-start.sh`
+- `test/leak.bats`
+
+## 2026-05-14 Verification
+
+```text
+bash -n cody-switch
+bash -n hooks/pre-commit.sh
+bash -n hooks/session-start.sh
+bats test/leak.bats
+shellcheck --severity=error hooks/pre-commit.sh hooks/session-start.sh
+bats test/extras.bats
+make test
+```
+
 ## Next Sync
 
-Use the `sync-switch` skill and compare:
+Use the `bring` or `sync-switch` skill and compare:
 
 ```bash
-git -C /Users/zaguerinho/scripts/claude-switch log --oneline --reverse ab94f97655effcca1e88d9c00387f2c4a446f50e..HEAD
-git -C /Users/zaguerinho/scripts/claude-switch diff --name-status ab94f97655effcca1e88d9c00387f2c4a446f50e..HEAD
+git -C /Users/zaguerinho/scripts/claude-switch log --oneline --reverse a704cd7f34652026ace64c079a08440db982e3be..HEAD
+git -C /Users/zaguerinho/scripts/claude-switch diff --name-status a704cd7f34652026ace64c079a08440db982e3be..HEAD
 ```

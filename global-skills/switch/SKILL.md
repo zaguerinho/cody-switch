@@ -39,6 +39,24 @@ cody-switch open <name>
 cody-switch doctor [--fix]
 ```
 
+## Dirty State Handling
+
+For classic features, `cody-switch` buckets tracked dirty paths before switching:
+
+- `active_feature_only` on a non-protected branch: runs `save`, stages `.codex/features/<active>/`, commits `chore(<active>): sync feature AGENTS.md`, then completes the switch.
+- `active_feature_only` on a protected branch (`main`, `master`, `roles-deploy`, or `CODY_SWITCH_PROTECTED_BRANCHES`): aborts and asks for a feature branch commit.
+- `cross_feature` or `mixed`: aborts with the leak recovery playbook because `.codex/features/<X>/...` is dirty while `<X>` is not active.
+- `code_only`: aborts with the standard commit-or-stash message.
+
+Use `cody-switch <name> --no-auto-commit` when the user explicitly wants to inspect active-feature context edits before committing them.
+
+The installed per-repo pre-commit hook blocks staged `.codex/features/<X>/...` paths when `<X>` is not the active feature. Override only when intentional:
+
+```bash
+git commit --no-verify
+CODY_SWITCH_SKIP_FEATURE_GUARD=1 git commit -m "..."
+```
+
 ## Prompt templates
 
 Use:

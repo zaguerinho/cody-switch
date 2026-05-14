@@ -59,7 +59,7 @@ Pick the right level based on task complexity:
 - Diff behavior between main and your changes when relevant
 - Ask yourself: "Would a staff engineer approve this?"
 - Run tests, check logs, demonstrate correctness
-- For critical changes, consider parallel review (spawn reviewers for security, perf, tests)
+- For critical changes, consider parallel review (spawn reviewers for security, perf, tests) using the defaults in section 7.
 
 ### 6. Autonomous Bug Fixing
 - When given a bug report: just fix it. Don't ask for hand-holding
@@ -67,6 +67,15 @@ Pick the right level based on task complexity:
 - Zero context switching required from the user
 - Go fix failing CI tests without being told how
 - For elusive bugs: spawn competing investigators to disprove each other's theories
+
+### 7. Agent Orchestration Defaults
+When you delegate verification, review, or analysis to subagents, apply these defaults:
+
+- **Mandate execution, not just reading.** Reviewer agents read files and reason. They do not automatically run the suite, build the binary, or invoke the command. For changes with tests or a CLI, build it, run scoped tests, and smoke-invoke at least one entry point.
+- **Tie adversarial checks to the diff.** Turn on specific review prompts based on changed files and claims, such as middleware, internal endpoints, passthrough behavior, request headers, or new input flags.
+- **Use neutral problem statements.** State what changed, what files it touches, and what it claims. Avoid steering reviewers with confidence labels.
+
+A fresh reviewer finding valid issues after your own reviewers approved means the orchestration needs adjustment.
 
 ## Task Management
 

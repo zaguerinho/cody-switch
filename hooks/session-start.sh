@@ -3,10 +3,10 @@
 # cody-switch SessionStart hook
 #
 # Injected into Codex via hooks config. Runs on session startup/resume.
-# Outputs plain text that gets injected as context for Claude.
+# Outputs plain text that gets injected as context for Codex.
 #
 # Stdin: JSON with { session_id, cwd, source: "startup"|"resume"|"clear"|"compact" }
-# Stdout: Context text (injected into Claude's conversation)
+# Stdout: Context text (injected into Codex's conversation)
 
 # Read stdin (hook input JSON)
 INPUT=$(cat)
@@ -107,7 +107,7 @@ if [ -n "$WT_FEATURE" ] && [ -n "$MAIN_REPO" ]; then
     if [ -f "$GLOBAL_LESSONS" ]; then
         echo "  Also read: .codex/features/lessons-global.md"
     fi
-    USER_LESSONS="$HOME/.claude/lessons-global.md"
+    USER_LESSONS="$HOME/.codex/lessons-global.md"
     if [ -f "$USER_LESSONS" ]; then
         echo "  Also read: ~/.codex/lessons-global.md (user-level)"
     fi
@@ -205,17 +205,17 @@ if [ -n "$CHECKPOINT_ID" ] && [ -n "$LATEST_ID" ] && [ "$CHECKPOINT_ID" != "$LAT
     if [ -n "$SUMMARY" ]; then
         echo "Checkpoint: ${SUMMARY}"
     fi
-    echo "Fork from checkpoint: claude --resume ${CHECKPOINT_ID} --fork-session"
-    echo "Resume latest: claude --resume ${LATEST_ID}"
+    echo "Fork from checkpoint: codex fork ${CHECKPOINT_ID}"
+    echo "Resume latest: codex resume ${LATEST_ID}"
 elif [ -n "$CHECKPOINT_ID" ]; then
     echo ""
     if [ -n "$SUMMARY" ]; then
         echo "Checkpoint: ${SUMMARY}"
     fi
-    echo "Previous session available: claude --resume ${CHECKPOINT_ID}"
+    echo "Previous session available: codex resume ${CHECKPOINT_ID}"
 elif [ -n "$LATEST_ID" ]; then
     echo ""
-    echo "Previous session available: claude --resume ${LATEST_ID}"
+    echo "Previous session available: codex resume ${LATEST_ID}"
 fi
 
 # Stopping point detection
@@ -238,9 +238,37 @@ GLOBAL_LESSONS="$FEATURES_DIR/lessons-global.md"
 if [ -f "$GLOBAL_LESSONS" ]; then
     echo "  Also read: .codex/features/lessons-global.md"
 fi
-USER_LESSONS="$HOME/.claude/lessons-global.md"
+USER_LESSONS="$HOME/.codex/lessons-global.md"
 if [ -f "$USER_LESSONS" ]; then
     echo "  Also read: ~/.codex/lessons-global.md (user-level)"
+fi
+
+# Cross-feature dirt detection. This warns when edits exist under
+# .codex/features/<X>/ where X is not the currently-active feature.
+if command -v git >/dev/null 2>&1 && git -C "$CWD" rev-parse --git-dir >/dev/null 2>&1; then
+    LEAKED=$(git -C "$CWD" status --porcelain '.codex/features/' 2>/dev/null | \
+        awk -v active="$CURRENT" '
+            {
+                line = substr($0, 4)
+                arrow_pos = index(line, " -> ")
+                if (arrow_pos > 0) line = substr(line, arrow_pos + 4)
+                if (match(line, /^\.codex\/features\/[^\/]+\//)) {
+                    feature = line
+                    sub(/^\.codex\/features\//, "", feature)
+                    sub(/\/.*/, "", feature)
+                    if (feature != active) print "  " feature ": " line
+                }
+            }
+        ')
+    if [ -n "$LEAKED" ]; then
+        echo ""
+        echo "WARNING: Cross-feature dirt detected"
+        echo "  Active feature: '${CURRENT}'. Uncommitted edits exist under non-active feature(s):"
+        echo "$LEAKED"
+        echo "  These edits belong to the owning feature's base branch, not to the active feature."
+        echo "  Recovery: stash, switch to the owning feature's base branch, branch off, pop, commit, PR."
+        echo "  Reference: ~/.codex/lessons-global.md 'Cross-Feature .codex/features/<X>/AGENTS.md Edits Leak Across Switches'"
+    fi
 fi
 
 check_agent_hub_unread "$CWD"

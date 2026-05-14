@@ -172,14 +172,18 @@ h1 {
   page-break-after: avoid;
 }
 
+/* h2 flows naturally: content fills pages instead of forcing every section
+   onto a fresh page. For a deliberate break, add
+   `<div class="page-break"></div>` in the markdown. */
 h2 {
   color: #2D2D2D;
   border-bottom: 1px solid #E2E8F0;
   padding-bottom: 5px;
   margin-top: 24px;
   font-size: 16pt;
-  page-break-before: always;
+  page-break-before: auto;
   page-break-after: avoid;
+  break-inside: avoid;
 }
 
 /* First h2 (subtitle) stays on title page */
@@ -188,6 +192,13 @@ h1 + h2 {
   border-bottom: none;
   font-size: 14pt;
   color: #555;
+  margin-top: 0;
+}
+
+/* Manual page break utility: `<div class="page-break"></div>` */
+.page-break {
+  page-break-after: always;
+  height: 0;
 }
 
 h3 {
@@ -377,7 +388,7 @@ section {
 Follow these rules when writing markdown for PDF output:
 
 - **h1** (`#`) — document title only (one per document)
-- **h2** (`##`) — major sections (each forces a new page)
+- **h2** (`##`) — major sections (flow naturally; insert `<div class="page-break"></div>` before one when you want a forced page break)
 - **h3** (`###`) — subsections
 - **`---`** — visual separator in source (renders as thin line)
 

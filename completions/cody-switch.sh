@@ -187,7 +187,7 @@ _cody_switch_bash() {
                 *)
                     # Default switch context: offer --with and feature names
                     if [[ "$cur" == -* ]]; then
-                        COMPREPLY=( $(compgen -W "--with --json --output=json" -- "$cur") )
+                        COMPREPLY=( $(compgen -W "--with --no-auto-commit --json --output=json" -- "$cur") )
                     else
                         local features
                         features="$(_cody_switch_features)"
@@ -328,7 +328,9 @@ _cody_switch_zsh() {
                     ;;
                 *)
                     # Direct switch: offer --with flag and features
-                    _arguments '--with[Add reference context]:feature:->ref_feature'
+                    _arguments \
+                        '--with[Add reference context]:feature:->ref_feature' \
+                        '--no-auto-commit[Do not auto-commit dirty active-feature docs]'
                     if [[ "$state" == "ref_feature" ]]; then
                         _describe 'feature' features
                     else

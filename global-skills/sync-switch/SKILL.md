@@ -14,6 +14,10 @@ description: >
 Use this skill to maintain `cody-switch` as a Codex-native port of
 `~/scripts/claude-switch`.
 
+For the user-facing trigger name, prefer the `bring` skill. `bring` delegates
+to this workflow and exists so users can ask to "bring" or "transfer" upstream
+changes without knowing the maintenance skill name.
+
 ## Defaults
 
 - Upstream repo: `~/scripts/claude-switch`
